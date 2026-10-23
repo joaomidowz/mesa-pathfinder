@@ -62,5 +62,22 @@ const entry=status(await req('bob','entries/spell-boladefogo-livro1-3'),200);
 assert.equal(entry.data.traditions,'arcana, primal');checks++;
 status(await req('bob','entries/nao-existe'),404);
 status(await req('bob','search?q=ok&type=ruim'),400);
-console.log('PASS',checks,'checks: membership, privacy, role changes, migration, optimistic locking, books, provisioning, SRD search.');
+// Campos da página Sessão: listas e conjuração validadas no servidor.
+const sheet={profile:{name:'Bob'},heroPoints:'1',conditions:[{id:'condition-assustado-livro1',name:'Assustado',value:'2'}],spellcasting:{tradition:'arcana',kind:'preparado',attack:'+7',dc:'17',slots:{'1':{max:'2',used:'1'}},focus:{max:'1',current:'1'}},spells:[{id:'spell-boladefogo-livro1-3',name:'BOLA DE FOGO',rank:'3',notes:''}],items:[{id:'',name:'Corda',qty:'1',bulk:'L',invested:false,notes:''}]};
+status(await req('bob','characters/'+bob.id,'PUT',{data:sheet,version:1}),200);
+assert.deepEqual(status(await req('bob','characters/'+bob.id),200).data,sheet);checks++;
+for(const broken of [{spells:{}},{items:['corda']},{conditions:'Assustado'},{spellcasting:[]}])status(await req('bob','characters/'+bob.id,'PUT',{data:{...sheet,...broken},version:2}),400);
+// Itens entram na busca como tipo próprio.
+sqlite.prepare("INSERT INTO srd_entries (id,type,name,norm,level,category,traits,book,page,data) VALUES (?,?,?,?,?,?,?,?,?,?)").run('item-cordadeseda-livro2-1','item','CORDA DE SEDA','cordadeseda',1,'equipamento','','livro2',300,JSON.stringify({name:'CORDA DE SEDA',type:'item',text:'Uma corda leve.'}));
+assert.equal(status(await req('bob','search?type=item'),200).entries[0].id,'item-cordadeseda-livro2-1');checks++;
+// Limite de fichas: 30 para jogador, 300 para o mestre (criaturas e NPCs como fichas próprias).
+const made=[];for(let i=0;i<29;i++)made.push((await req('bob','characters','POST',{data:{profile:{name:'Bob '+i}}})).status);
+assert.ok(made.every(code=>code===201));checks++;
+status(await req('bob','characters','POST',{data:{profile:{name:'Bob demais'}}}),400);
+const creatures=[];for(let i=0;i<31;i++)creatures.push((await req('gm','characters','POST',{data:{profile:{name:'Criatura '+i}}})).status);
+assert.ok(creatures.every(code=>code===201));checks++;
+// Modo de convite vem do ambiente: o servidor da mesa usa códigos de acesso.
+assert.equal(status(await req('bob','session'),200).invitationMode,'private-site-sharing');checks++;
+env.INVITATION_MODE='access-code';assert.equal(status(await req('bob','session'),200).invitationMode,'access-code');checks++;delete env.INVITATION_MODE;
+console.log('PASS',checks,'checks: membership, privacy, role changes, migration, optimistic locking, books, provisioning, SRD search, session fields, items, limits, invitation mode.');
 sqlite.close();

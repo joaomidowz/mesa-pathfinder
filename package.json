@@ -6,7 +6,7 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "build": "node scripts/build-worker.mjs",
-    "test": "node scripts/test-worker.mjs",
+    "test": "node scripts/run-tests.mjs",
     "dev": "node server.mjs",
     "render:pages": "node scripts/render-pages.mjs",
     "extract": "node scripts/extract-text.mjs",

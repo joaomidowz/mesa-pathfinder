@@ -5,7 +5,10 @@ const DEFAULTS = {
   languages:'', feats: { ancestry:'',ancestryTalent:'',background:'',class1:'',class2:'',skill2:'',archetype:'' },
   abilities:{}, attacks:[], references:[], fieldReferences:{}, extra:{},
   inventory:{carried:'',consumables:'',equipped:'',wealth:''},
-  notes:{session:'',questions:'',allies:'',enemies:'',organizations:'',personality:'',history:''}
+  notes:{session:'',questions:'',allies:'',enemies:'',organizations:'',personality:'',history:''},
+  // Campos da página Sessão (docs/modelo-da-ficha.md); fichas antigas ganham os vazios no merge.
+  heroPoints:'0', conditions:[], spells:[], items:[],
+  spellcasting:{tradition:'',kind:'',attack:'',dc:'',slots:{},focus:{max:'0',current:'0'}}
 };
 const skillInfo = {
   acrobatics:['Acrobatismo','Equilibrar-se, Atravessar Acrobaticamente e Escapar.'],arcana:['Arcanismo','Conhecimentos arcanos, Identificar Magia e Decifrar Escrita apropriada.'],athletics:['Atletismo','Escalar, Nadar, Saltar, Agarrar, Derrubar, Desarmar, Empurrar e Reposicionar. Cada ação tem seus requisitos.'],diplomacy:['Diplomacia','Impressionar, Pedir e Obter Informação.'],deception:['Dissimulação','Mentir, Fintar, Personificar e Criar uma Distração.'],stealth:['Furtividade','Esconder-se, Esgueirar-se e Evitar Observação.'],intimidation:['Intimidação','Desmoralizar em combate e Coagir. Consulte requisitos e imunidade temporária no livro.'],thievery:['Ladroagem','Abrir Fechaduras, Desabilitar Dispositivos, Palmear e Furtar.'],crafting:['Manufatura','Criar, Reparar e identificar materiais e itens apropriados.'],medicine:['Medicina','Primeiros Socorros, Tratar Ferimentos, Doenças e Venenos.'],nature:['Natureza','Conhecimentos naturais, Comandar um Animal e ações mágicas apropriadas.'],occultism:['Ocultismo','Conhecimentos ocultos, espíritos, fenômenos e magia ocultista.'],performance:['Performance','Atuar, cantar, tocar ou realizar apresentações.'],religion:['Religião','Conhecimentos religiosos, divindades, mortos-vivos e magia divina.'],society:['Sociedade','Povos, história, leis, culturas e Subsistir em cidades.'],survival:['Sobrevivência','Rastrear, Subsistir, Orientar-se e Cobrir Rastros.'],warfareLore:['Saber de Guerra','Recordar Conhecimento sobre táticas, batalhas e exércitos.']
@@ -20,12 +23,16 @@ const isMesa = location.pathname.endsWith('/mesa.html');
 let selectedId = new URLSearchParams(location.search).get('character');
 function localKey() { return `mesa-v4:${session.user.id}:${character.id}`; }
 function readOnly() { return character?.readOnly; }
-async function api(path,method='GET',payload) {
-  const response=await fetch('/api/'+path,{method,cache:'no-store',headers:payload?{'content-type':'application/json'}:undefined,body:payload?JSON.stringify(payload):undefined});
+async function request(url,method='GET',payload) {
+  const response=await fetch(url,{method,cache:'no-store',headers:payload?{'content-type':'application/json'}:undefined,body:payload?JSON.stringify(payload):undefined});
   let result; try { result=await response.json(); } catch { result={error:'Resposta inválida do servidor.'}; }
   if(!response.ok) { const error=new Error(result.error || 'Falha de conexão.'); error.status=response.status; throw error; }
   return result;
 }
+function api(path,method,payload) { return request('/api/'+path,method,payload); }
+// Rotas do servidor da mesa (login por código); só existem quando session.invitationMode é 'access-code'.
+function auth(path,payload) { return request('/auth/'+path,'POST',payload || {}); }
+function accessCodes() { return session?.invitationMode==='access-code'; }
 function setStatus(message,state='') { document.querySelectorAll('[data-cloud-status]').forEach(el=>{el.textContent=message;el.dataset.state=state;}); document.querySelectorAll('[data-save-status]').forEach(el=>el.textContent=state==='saved'?' · salvo':state==='saving'?' · salvando…':''); }
 function backupLocal() { if(!character || readOnly()) return; try { localStorage.setItem(localKey(),JSON.stringify({data,version:character.version,pending,updatedAt:new Date().toISOString()})); } catch { setStatus('Não foi possível gravar o backup neste aparelho. Use Baixar backup.','offline'); } }
 function dirty() { if(readOnly()) return; pending=true;editCounter++;backupLocal();setStatus('Alterações pendentes · salvamento automático…','saving');clearTimeout(timer);timer=setTimeout(saveData,1100); }
@@ -107,7 +114,7 @@ async function initCharacter() {
   const draft=localStorage.getItem(localKey());
   if(draft && !readOnly()) {try {const parsed=JSON.parse(draft);if(parsed.pending && confirm('Há alterações locais não enviadas desta ficha. Restaurar para revisar?')) {data=merge(clone(DEFAULTS),parsed.data);pending=true;conflict=parsed.version!==character.version;}}catch{}}
   document.title=(data.profile.name || 'Personagem')+' · Mesa Pathfinder';
-  document.querySelectorAll('nav').forEach(nav=>{nav.innerHTML=`<a href="mesa.html">Mesa</a><a href="index.html?character=${encodeURIComponent(selectedId)}">Ficha</a><a href="progressao.html?character=${encodeURIComponent(selectedId)}">Progressão</a><a href="anotacoes.html?character=${encodeURIComponent(selectedId)}">Anotações</a><a href="busca.html">Buscar regras</a>`;});
+  document.querySelectorAll('nav').forEach(nav=>{nav.innerHTML=`<a href="mesa.html">Mesa</a><a href="sessao.html?character=${encodeURIComponent(selectedId)}">Sessão</a><a href="index.html?character=${encodeURIComponent(selectedId)}">Ficha</a><a href="progressao.html?character=${encodeURIComponent(selectedId)}">Progressão</a><a href="anotacoes.html?character=${encodeURIComponent(selectedId)}">Anotações</a><a href="busca.html">Buscar regras</a>`;});
   augmentFieldReferences();renderDynamic();addControls();updateCalculations();
   document.querySelectorAll('[data-save]').forEach(button=>{button.disabled=readOnly();button.addEventListener('click',saveData);});
   document.querySelectorAll('[data-reset]').forEach(button=>{button.hidden=true;});
@@ -121,6 +128,7 @@ async function initCharacter() {
   window.addEventListener('beforeunload',event=>{if(pending){backupLocal();event.preventDefault();event.returnValue='';}});
   document.addEventListener('visibilitychange',()=>{if(document.hidden && pending && !conflict)saveData();});
   window.addEventListener('online',()=>{if(pending&&!conflict)saveData();});
+  document.dispatchEvent(new CustomEvent('mesa:ficha'));
 }
 async function createCharacter(form) {
   const values=new FormData(form),next=clone(DEFAULTS);
@@ -130,28 +138,43 @@ async function createCharacter(form) {
 async function refreshMembers() {
   const root=document.querySelector('[data-members]');if(!root || !session.user.admin)return;
   const result=await api('members');
-  root.innerHTML=result.members.map(member=>`<article class="member-row"><div><strong>${escapeAttr(member.email)}</strong><small>${member.active?(member.accepted?'Entrou na mesa':'Cadastrado · acesso privado do Site necessário'):'Acesso revogado'}</small></div><select aria-label="Papel de ${escapeAttr(member.email)}" data-role-email="${escapeAttr(member.email)}"><option value="player" ${member.role==='player'?'selected':''}>Jogador</option><option value="master" ${member.role==='master'?'selected':''}>Mestre</option></select><button class="btn" data-revoke="${escapeAttr(member.email)}" ${member.email===session.user.email?'disabled':''}>Revogar</button></article>`).join('');
+  root.innerHTML=result.members.map(member=>`<article class="member-row"><div><strong>${escapeAttr(member.email)}</strong><small>${member.active?(member.accepted?'Entrou na mesa':accessCodes()?'Cadastrado · ainda não entrou':'Cadastrado · acesso privado do Site necessário'):'Acesso revogado'}</small>${accessCodes()&&member.active&&member.email!==session.user.email?`<button type="button" class="info-button section-space" data-new-code="${escapeAttr(member.email)}">Novo link de acesso</button>`:''}</div><select aria-label="Papel de ${escapeAttr(member.email)}" data-role-email="${escapeAttr(member.email)}"><option value="player" ${member.role==='player'?'selected':''}>Jogador</option><option value="master" ${member.role==='master'?'selected':''}>Mestre</option></select><button class="btn" data-revoke="${escapeAttr(member.email)}" ${member.email===session.user.email?'disabled':''}>Revogar</button></article>`).join('');
   root.querySelectorAll('[data-role-email]').forEach(select=>select.addEventListener('change',async()=>{if(!confirm(`Alterar o papel de ${select.dataset.roleEmail} para ${select.value==='master'?'mestre (verá todas as fichas)':'jogador'}?`)){await refreshMembers();return;}try{await api('members','POST',{email:select.dataset.roleEmail,role:select.value});location.reload();}catch(error){alert(error.message);}}));
   root.querySelectorAll('[data-revoke]').forEach(button=>button.addEventListener('click',async()=>{if(!confirm('Revogar o acesso à mesa? As fichas serão mantidas.'))return;try{await api('members','DELETE',{email:button.dataset.revoke});await refreshMembers();}catch(error){alert(error.message);}}));
+  root.querySelectorAll('[data-new-code]').forEach(button=>button.addEventListener('click',async()=>{if(!confirm(`Gerar um novo link de acesso para ${button.dataset.newCode}? O link antigo e os aparelhos conectados deixam de funcionar.`))return;try{await showAccess(button.dataset.newCode);document.querySelector('[data-invite-result]').scrollIntoView({block:'center'});}catch(error){alert(error.message);}}));
+}
+async function showAccess(email) {
+  const access=await auth('code',{email});
+  document.querySelector('[data-invite-result]').textContent=`Link de acesso de ${access.email} pronto. Mande só para essa pessoa: ele entra direto e vale como senha (código ${access.code}).`;
+  document.querySelector('[data-invite-link]').value=access.link;
 }
 async function initMesa() {
   document.querySelector('[data-account]').textContent=session.user.email;
   document.querySelector('[data-role]').textContent=(session.user.role==='master'?'Mestre':'Jogador')+(session.user.admin?' · administrador':'');
   const result=await api('characters'),root=document.querySelector('[data-characters]');
   document.querySelector('[data-list-title]').textContent=session.user.role==='master'?'Todos os personagens':'Meus personagens';
-  root.innerHTML=result.characters.length?result.characters.map(item=>`<a class="character-card" href="index.html?character=${encodeURIComponent(item.id)}"><div class="eyebrow">${item.owned?'Seu personagem':'Visão do mestre · leitura'}</div><h3>${escapeAttr(item.name || 'Sem nome')}</h3><p>${escapeAttr(item.ancestry)} · ${escapeAttr(item.className || 'Classe a definir')} · Nível ${escapeAttr(item.level)}</p><small>${escapeAttr(item.ownerEmail)}</small><span class="card-arrow">Abrir ficha ↗</span></a>`).join(''):'<div class="note">Você ainda não criou um personagem. Comece pelo formulário abaixo.</div>';
+  root.innerHTML=result.characters.length?result.characters.map(item=>`<a class="character-card" href="sessao.html?character=${encodeURIComponent(item.id)}"><div class="eyebrow">${item.owned?'Seu personagem':'Visão do mestre · leitura'}</div><h3>${escapeAttr(item.name || 'Sem nome')}</h3><p>${escapeAttr(item.ancestry)} · ${escapeAttr(item.className || 'Classe a definir')} · Nível ${escapeAttr(item.level)}</p><small>${escapeAttr(item.ownerEmail)}</small><span class="card-arrow">Abrir ficha ↗</span></a>`).join(''):'<div class="note">Você ainda não criou um personagem. Comece pelo formulário abaixo.</div>';
   document.querySelector('[data-create]').addEventListener('submit',async event=>{event.preventDefault();const button=event.target.querySelector('button');button.disabled=true;try{await createCharacter(event.target);}catch(error){alert(error.message);button.disabled=false;}});
   const admin=document.querySelector('[data-admin]');admin.hidden=!session.user.admin;
-  if(session.user.admin){await refreshMembers();document.querySelector('[data-invite]').addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.target);try{const result=await api('members','POST',{email:form.get('email'),role:form.get('role')});document.querySelector('[data-invite-result]').textContent=`${result.email} cadastrado. Agora libere esse e-mail em Compartilhar no Site e envie o link abaixo. Este cadastro não envia e-mail automaticamente.`;document.querySelector('[data-invite-link]').value=result.link;await refreshMembers();event.target.reset();}catch(error){alert(error.message);}});}
-  document.querySelector('[data-copy-link]').addEventListener('click',async()=>{const input=document.querySelector('[data-invite-link]');try{await navigator.clipboard.writeText(input.value);document.querySelector('[data-invite-result]').textContent='Link copiado. O convidado precisa entrar com o e-mail cadastrado e ter acesso privado ao Site.';}catch{input.select();}});
+  document.querySelectorAll('[data-master-only]').forEach(el=>el.hidden=session.user.role!=='master');
+  const logout=document.querySelector('[data-logout]');logout.hidden=!accessCodes();logout.addEventListener('click',async()=>{try{await auth('logout');}finally{location.href='/entrar.html';}});
+  if(session.user.admin){
+    document.querySelector('[data-invite-link]').value=new URL('/mesa.html',location.href).href;
+    if(accessCodes())document.querySelector('[data-invite-help]').innerHTML='1. Cadastre o e-mail e o papel abaixo.<br>2. Copie o link de acesso que aparece e mande só para essa pessoa: ele entra direto e vale como senha.<br>3. Perdeu o link? Gere um novo na lista abaixo; os aparelhos antigos saem da conta.';
+    await refreshMembers();
+    document.querySelector('[data-invite]').addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.target);try{const result=await api('members','POST',{email:form.get('email'),role:form.get('role')});if(accessCodes())await showAccess(result.email);else{document.querySelector('[data-invite-result]').textContent=`${result.email} cadastrado. Agora libere esse e-mail em Compartilhar no Site e envie o link abaixo. Este cadastro não envia e-mail automaticamente.`;document.querySelector('[data-invite-link]').value=result.link;}await refreshMembers();event.target.reset();}catch(error){alert(error.message);}});
+  }
+  document.querySelector('[data-copy-link]').addEventListener('click',async()=>{const input=document.querySelector('[data-invite-link]');try{await navigator.clipboard.writeText(input.value);document.querySelector('[data-invite-result]').textContent=accessCodes()?'Link copiado. Mande só para a pessoa convidada.':'Link copiado. O convidado precisa entrar com o e-mail cadastrado e ter acesso privado ao Site.';}catch{input.select();}});
   const old=localStorage.getItem('ficha-anao-barbaro-v2')||localStorage.getItem('ficha-anao-barbaro-local-backup');
   const recover=document.querySelector('[data-recover-old]');recover.hidden=!(old&&session.user.admin);recover.addEventListener('click',async()=>{try{const oldData=JSON.parse(old);if(!confirm('Criar uma cópia separada da ficha antiga deste navegador? Nenhum personagem existente será substituído.'))return;for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key?.startsWith('ficha-anao-barbaro-field-')){oldData.extra ||= {};oldData.extra[key.replace('ficha-anao-barbaro-field-','')]=localStorage.getItem(key);}}const result=await api('characters','POST',{data:oldData});location.href='index.html?character='+result.id;}catch(error){alert(error.message);}});
 }
 async function init() {
   document.querySelectorAll('main input,main textarea,main select,main button').forEach(el=>el.disabled=true);
   try {session=await api('session');books=session.books;document.querySelectorAll('main input,main textarea,main select,main button').forEach(el=>el.disabled=false);if(isMesa)await initMesa();else await initCharacter();}
-  catch(error){const main=document.querySelector('main');main.replaceChildren();const section=document.createElement('section');section.className='panel';const title=document.createElement('h1');title.textContent='Acesso à mesa';const message=document.createElement('p');message.textContent=error.message;const login=document.createElement('a');login.className='btn primary';login.href='/signin-with-chatgpt?return_to=%2Fmesa.html';login.target='_top';login.textContent='Entrar com ChatGPT';section.append(title,message,login);main.append(section);}
+  catch(error){const main=document.querySelector('main');main.replaceChildren();const section=document.createElement('section');section.className='panel';const title=document.createElement('h1');title.textContent='Acesso à mesa';const message=document.createElement('p');message.textContent=error.message;const login=document.createElement('a');login.className='btn primary';login.href='/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.search);login.target='_top';login.textContent='Entrar';section.append(title,message,login);main.append(section);}
 }
+// Ponte para os scripts das páginas novas (sessao.js): mesma ficha, salvamento automático, backup local e conflito.
+window.Mesa={get session(){return session;},get character(){return character;},get data(){return data;},get books(){return books;},api,dirty,saveData,bindAll,readOnly,escapeAttr,openHelp,skillInfo};
 document.addEventListener('DOMContentLoaded',init);
 // Ctrl+K abre a busca de regras a partir de qualquer página da ficha/mesa.
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();const selection=String(window.getSelection()||'').trim();location.href='busca.html'+(selection?'?q='+encodeURIComponent(selection):'');}});

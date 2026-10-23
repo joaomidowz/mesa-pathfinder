@@ -13,10 +13,10 @@ function validateData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data) || !data.profile || typeof data.profile.name !== 'string') fail(400, 'Ficha inválida: informe o nome do personagem.');
   const text = JSON.stringify(data);
   if (text.length > 900000) fail(413, 'Ficha grande demais.');
-  for (const key of ['stats','skills','feats','inventory','notes','extra','abilities','fieldReferences']) {
+  for (const key of ['stats','skills','feats','inventory','notes','extra','abilities','fieldReferences','spellcasting']) {
     if (key in data && (!data[key] || typeof data[key] !== 'object' || Array.isArray(data[key]))) fail(400, 'Estrutura inválida: ' + key);
   }
-  for (const key of ['attacks','references']) if (key in data && (!Array.isArray(data[key]) || data[key].some(value=>!value || typeof value !== 'object' || Array.isArray(value)))) fail(400, 'Lista inválida: '+key);
+  for (const key of ['attacks','references','spells','items','conditions']) if (key in data && (!Array.isArray(data[key]) || data[key].some(value=>!value || typeof value !== 'object' || Array.isArray(value)))) fail(400, 'Lista inválida: '+key);
   if (data.abilities && Object.keys(data.abilities).some(key=> !/^[\w-]{1,100}$/.test(key))) fail(400, 'Identificador de habilidade inválido.');
   if (data.abilities && Object.values(data.abilities).some(value=>!value || typeof value !== 'object' || Array.isArray(value))) fail(400, 'Habilidade inválida.');
   const forbidden = object => object && typeof object === 'object' && Object.entries(object).some(([key, val]) => ['__proto__','prototype','constructor'].includes(key) || forbidden(val));
@@ -57,7 +57,7 @@ async function findCharacter(id, user, env, write = false) {
   return record;
 }
 // --- SRD: consulta às regras estruturadas extraídas dos livros (tabelas srd_*) ---
-const SRD_TYPES = ['spell', 'focus', 'ritual', 'feat', 'class', 'ancestry', 'condition'];
+const SRD_TYPES = ['spell', 'focus', 'ritual', 'feat', 'class', 'ancestry', 'condition', 'item'];
 const srdDeaccent = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const srdSqueeze = s => srdDeaccent(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 const ftsQuery = q => String(q).split(/\s+/).filter(Boolean).map(term => '"' + term.replace(/["]/g, '') + '*"').join(' ');
@@ -114,7 +114,7 @@ async function srdSearch(url, env) {
 async function api(request, env, path) {
   const user = await actor(request, env);
   const method = request.method;
-  if (path === '/api/session' && method === 'GET') { await migrateLegacy(user, env); return json({ user, books: BOOKS, invitationMode: 'private-site-sharing' }); }
+  if (path === '/api/session' && method === 'GET') { await migrateLegacy(user, env); return json({ user, books: BOOKS, invitationMode: env.INVITATION_MODE || 'private-site-sharing' }); }
   if (path === '/api/books' && method === 'GET') return json({ books: BOOKS });
   if (path === '/api/srd/stats' && method === 'GET') {
     const counts = await env.DB.prepare('SELECT type, COUNT(*) AS count FROM srd_entries GROUP BY type ORDER BY count DESC').all();
@@ -172,7 +172,9 @@ async function api(request, env, path) {
     const input = await body(request);
     const data = validateData(input.data);
     const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM characters WHERE owner_id = ?1').bind(user.id).first();
-    if (count.count >= 30) fail(400, 'Limite de 30 personagens por conta.');
+    // O mestre guarda criaturas e NPCs como fichas próprias, por isso tem um limite maior.
+    const limit = user.role === 'master' ? 300 : 30;
+    if (count.count >= limit) fail(400, `Limite de ${limit} personagens por conta.`);
     const id = crypto.randomUUID(), now = new Date().toISOString();
     await env.DB.prepare('INSERT INTO characters (id, owner_id, owner_email, name, data, version, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?6)').bind(id, user.id, user.email, input.data.profile.name.slice(0, 160), data, now).run();
     return json({ id, version: 1, updatedAt: now }, 201);

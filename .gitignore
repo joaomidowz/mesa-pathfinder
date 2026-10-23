@@ -3,7 +3,7 @@ site.tar.gz
 node_modules/
 tmp/
 # Material licenciado e tudo que é extraído dele: nunca versionar nem publicar
-books/
+/books
 data/*.db
 data/*.db-*
 data/*.json
