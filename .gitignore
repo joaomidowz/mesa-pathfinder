@@ -1,0 +1,13 @@
+site.tar.gz
+.sites-runtime/
+node_modules/
+tmp/
+# Material licenciado e tudo que é extraído dele: nunca versionar nem publicar
+books/
+data/*.db
+data/*.db-*
+data/*.json
+data/backups/
+# Segredos locais e worktrees de agentes
+.env
+.claude/

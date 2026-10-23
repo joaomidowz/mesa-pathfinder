@@ -1,0 +1,142 @@
+{
+  "profile": {
+    "name": "Nome a confirmar",
+    "player": "João Gabriel",
+    "level": "2",
+    "xp": "1.750",
+    "ancestry": "Anão",
+    "heritage": "A confirmar",
+    "background": "Soldado",
+    "className": "Bárbaro",
+    "instinct": "Dracônico — Dragão Branco",
+    "deity": "Gorum"
+  },
+  "stats": {
+    "str": "4",
+    "dex": "2",
+    "con": "4",
+    "int": "0",
+    "wis": "1",
+    "cha": "-1",
+    "hpMax": "42",
+    "hpCurrent": "11",
+    "hpTemp": "0",
+    "ac": "17",
+    "fort": "9",
+    "reflex": "5",
+    "will": "6",
+    "perception": "6",
+    "speed": "5",
+    "classDc": "17"
+  },
+  "skills": {
+    "acrobatics": "6",
+    "arcana": "-1",
+    "athletics": "10",
+    "diplomacy": "-1",
+    "deception": "-1",
+    "stealth": "2",
+    "intimidation": "3",
+    "thievery": "2",
+    "crafting": "-1",
+    "medicine": "1",
+    "nature": "5",
+    "occultism": "0",
+    "performance": "-1",
+    "religion": "1",
+    "society": "0",
+    "survival": "5",
+    "warfareLore": "4"
+  },
+  "languages": "Comum\nEnânico",
+  "feats": {
+    "ancestry": "Visão no escuro",
+    "ancestryTalent": "Estratégia da Montanha — Livro 1, p. 44",
+    "background": "Olhar Intimidante — Livro 1, p. 260",
+    "class1": "Arremesso Enfurecido — Livro 2, p. 77",
+    "class2": "Finalização Furiosa — Livro 2, p. 77",
+    "skill2": "Salto Poderoso — Livro 1, p. 263",
+    "archetype": "Lutador de Luta Livre — Dedicação, Livro 2, p. 207"
+  },
+  "abilities": {
+    "rage": {
+      "name": "Fúria",
+      "source": "Livro 2, p. 72",
+      "effect": "1 ação. Recebe PV temporários iguais ao nível + Constituição. Enquanto durar: +2 dano em Golpes corpo a corpo; não usa ações com concentração, salvo se também tiverem fúria. Dura 1 minuto, até ficar inconsciente ou o encontro terminar. Nesta versão do Livro do Jogador 2, Fúria não aplica –1 na CA."
+    },
+    "instinct": {
+      "name": "Instinto Dracônico — Dragão Branco",
+      "source": "Livro 2, p. 74–75",
+      "effect": "Ao entrar em Fúria, pode aumentar o dano adicional de +2 para +4 e trocar o tipo pelo dano do sopro do dragão. Para Dragão Branco, use frio se o Mestre permitiu essa opção."
+    },
+    "suddenCharge": {
+      "name": "Investida Súbita — confirmar",
+      "source": "Livro 2, p. 76",
+      "effect": "2 ações. Anda duas vezes e pode fazer um Golpe corpo a corpo se terminar ao alcance de um inimigo. O nome “Investida Furiosa” não aparece assim no livro; confirme se era esta habilidade."
+    },
+    "thrownRage": {
+      "name": "Arremesso Enfurecido",
+      "source": "Livro 2, p. 77",
+      "effect": "Aplica o dano adicional de Fúria aos seus ataques com armas de arremesso."
+    },
+    "furiousFinish": {
+      "name": "Finalização Furiosa",
+      "source": "Livro 2, p. 77",
+      "effect": "1 ação. Faz um Golpe. Se acertar, recebe bônus de dano igual às rodadas restantes da Fúria, máximo +10. Depois a Fúria termina e você fica fatigado até descansar por pelo menos 10 minutos."
+    },
+    "quickLeap": {
+      "name": "Salto Poderoso",
+      "source": "Livro 1, p. 263",
+      "effect": "Requer especialista em Atletismo. Pode fazer um Pulo vertical de 1,5 m sem Salto em Altura e aumenta em 1,5 m a distância horizontal ao Pular."
+    },
+    "wrestler": {
+      "name": "Lutador de Luta Livre — Dedicação",
+      "source": "Livro 2, p. 207",
+      "effect": "Requer Atletismo treinado. Torna Atletismo especialista, concede Lutador Titânico, remove a penalidade de –2 para ataques letais com ataques desarmados não letais e dá +2 na CD de Fortitude contra Agarrar ou Engolir Inteiro."
+    },
+    "titanWrestler": {
+      "name": "Lutador Titânico",
+      "source": "Livro 1, p. 260",
+      "effect": "Você pode Agarrar, Derrubar, Desarmar, Empurrar e Reposicionar criaturas até duas categorias de tamanho maiores que você (três categorias se for lendário em Atletismo)."
+    }
+  },
+  "attacks": [
+    {
+      "name": "Machado de mão",
+      "bonus": "+10",
+      "damage": "1d6 + 4",
+      "traits": "corpo a corpo; confirmar runas",
+      "notes": ""
+    },
+    {
+      "name": "Machadinha / arma de arremesso",
+      "bonus": "+10",
+      "damage": "1d6 + 4",
+      "traits": "arremesso; Arremesso Enfurecido",
+      "notes": ""
+    },
+    {
+      "name": "Ataque desarmado",
+      "bonus": "+10",
+      "damage": "1d4 + 4",
+      "traits": "preencher se usar",
+      "notes": ""
+    }
+  ],
+  "inventory": {
+    "carried": "Adaga de clã\nKit de aventura\nPedra vermelha\nKit de escalada\nKit de medicina",
+    "consumables": "Poção de cura menor\nRação\nPedra de 10",
+    "equipped": "Armadura de couro batido\nMachado grande\nMachadinha pequena\nToques / acessórios\nBroche",
+    "wealth": "PP: confirmar\nPO: 76\nPL: confirmar"
+  },
+  "notes": {
+    "session": "",
+    "questions": "Confirmar nome do personagem e herança.\nConfirmar PV atuais e armas/danos.\nConfirmar se a mesa usa Arquétipo Livre.\nConfirmar se “Investida Furiosa” é Investida Súbita.",
+    "allies": "",
+    "enemies": "",
+    "organizations": "",
+    "personality": "Atitude: reservado.\nCrenças: honrado e direto; agradece a coragem.\nGosto: cozinhar.\nAntipatia: luxo.",
+    "history": "Soldado. Anão bárbaro ligado a Gorum, com instinto dracônico de Dragão Branco."
+  },
+  "extra": {}
+}
