@@ -1,5 +1,5 @@
-// Constrói os catálogos estruturados (magias, talentos, classes, ancestralidades, condições)
-// a partir do texto extraído (data/pages.json) e carrega tudo em data/local.db (tabelas srd_*).
+// Constrói os catálogos estruturados (magias, talentos, classes, ancestralidades, condições, itens)
+// a partir do texto extraído (DATA_DIR/pages.json; padrão data/) e carrega tudo em DATA_DIR/local.db (tabelas srd_*).
 //
 // Estratégia:
 // - cabeçalhos de entrada detectados no modo RAW (linhas próprias, formato regular);
@@ -13,7 +13,8 @@ import { openLocalDb } from './local-db.mjs';
 import { parseEquipmentTables, parseTreasureItems } from './srd-items.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const pages = JSON.parse(fs.readFileSync(path.join(root, 'data/pages.json'), 'utf8'));
+const dataDir = path.resolve(root, process.env.DATA_DIR || 'data');
+const pages = JSON.parse(fs.readFileSync(path.join(dataDir, 'pages.json'), 'utf8'));
 const byBook = { livro1: pages.filter(p => p.book === 'livro1'), livro2: pages.filter(p => p.book === 'livro2') };
 
 // ---------- utilidades ----------
@@ -463,7 +464,7 @@ const items = [
 ];
 
 for (const [name, list] of Object.entries({ spells, feats, classes, ancestries, conditions, items })) {
-  fs.writeFileSync(path.join(root, 'data', `${name}.json`), JSON.stringify(list, null, 1));
+  fs.writeFileSync(path.join(dataDir, `${name}.json`), JSON.stringify(list, null, 1));
 }
 
 // ---------- relatório de auditoria ----------
@@ -503,7 +504,7 @@ for (const [category, count] of [...itemCategories].sort((a, b) => a[0].localeCo
 const badItems = items.filter(item => !item.price || (item.book === 'livro2' && (!item.nameFixed || item.text.length < 40 || item.text.length > 2200)));
 report.push('', `## Itens suspeitos (sem preço, nome não recuperado ou corpo fora do normal): ${badItems.length}`);
 for (const item of badItems) report.push(`- "${item.name}" (${item.book} p.${item.page}): preço="${item.price}", texto=${item.text.length}`);
-fs.writeFileSync(path.join(root, 'data', 'srd-report.md'), report.join('\n'));
+fs.writeFileSync(path.join(dataDir, 'srd-report.md'), report.join('\n'));
 
 console.log(`Magias: ${spells.filter(e => e.type === 'spell').length} | Foco: ${spells.filter(e => e.type === 'focus').length} | Rituais: ${spells.filter(e => e.type === 'ritual').length} | Talentos: ${feats.length}`);
 console.log(`Classes: ${classes.length} (problemáticas: ${badProg.length}) | Ancestralidades: ${ancestries.length} (problemáticas: ${badAnc.length}) | Condições: ${conditions.length}`);

@@ -9,7 +9,7 @@
     "test": "node scripts/run-tests.mjs",
     "dev": "node server.mjs",
     "mesa": "node server.mjs --mesa",
-    "start": "node server.mjs --mesa",
+    "start": "node scripts/preparar.mjs && node server.mjs --mesa",
     "codigo": "node scripts/novo-codigo.mjs",
     "render:pages": "node scripts/render-pages.mjs",
     "extract": "node scripts/extract-text.mjs",

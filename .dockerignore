@@ -1,0 +1,11 @@
+# Material licenciado, banco, segredos e worktrees nunca entram na imagem: vão para o volume ou ficam na máquina.
+books
+data/*.db
+data/*.db-*
+data/*.json
+data/backups
+.env
+.claude
+.git
+node_modules
+tmp

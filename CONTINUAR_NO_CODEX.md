@@ -11,6 +11,8 @@ Este ZIP contém o código da Mesa Pathfinder no commit `3051f0528274e3fff5c0008
 
 O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e JS embutidos. Os testes usam SQLite em memória e identidades sintéticas; não acessam produção.
 
+> **Desde 24/10/2026** o projeto está versionado em git (livros, banco e catálogos fora dele) e roda fora do Sites: `npm run mesa` sobe o servidor da mesa com login por código de acesso (`local/platform.mjs`), pronto para hospedagem fixa (`Dockerfile`, [docs/deploy.md](docs/deploy.md)). Vieram também a página Sessão, o painel do grupo e o catálogo de itens. Comece pelo README e pelos documentos em `docs/`; o contrato entre as páginas está em [docs/modelo-da-ficha.md](docs/modelo-da-ficha.md).
+
 ## Prompt pronto para o Codex
 
 > Continue este projeto de fichas Pathfinder para uma mesa com vários jogadores. Leia CONTINUAR_NO_CODEX.md e README.md antes de alterar código. Preserve a ficha original e a privacidade: jogador só consulta/edita seus próprios personagens, mestre consulta todos sem editar fichas alheias, administrador gerencia e-mails e papéis. Use worker/index.mjs como fonte do backend e dist/*.html, dist/app.js, dist/livro.js e dist/styles.css como fontes do frontend; dist/server/index.js é gerado. Rode npm run build e npm test. Primeiro avalie como executar localmente e como manter ou substituir a autenticação e os recursos de hospedagem existentes. Não aceite cabeçalhos de identidade enviados diretamente por clientes em uma implantação fora do Sites. Não apague tabelas nem reaplique migrações existentes sem verificar seu estado. Explique as mudanças necessárias e implemente apenas o que eu pedir a seguir.
@@ -21,8 +23,14 @@ O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e
 | --- | --- |
 | `worker/index.mjs` | API, autenticação recebida da plataforma, convites, permissões, leitura dos livros e busca SRD |
 | `worker/owner-defaults.json` | Dados-base do personagem original do proprietário; não representa necessariamente sua ficha atual salva |
-| `server.mjs` | Servidor local: roda o Worker do build com banco/arquivos locais e login automático de administrador |
-| `dist/app.js` | Fichas, mestre, jogadores, administração, referências, salvamento automático, backup e atalho Ctrl+K |
+| `server.mjs` | Servidor: adaptador node:http da plataforma; `npm run dev` (só você, 127.0.0.1) ou `npm run mesa` (login por código) |
+| `local/platform.mjs`, `local/migrations/` | Login por código, sessões, identidade repassada ao Worker, arquivos estáticos e backup ([docs/servidor-da-mesa.md](docs/servidor-da-mesa.md)) |
+| `dist/app.js` | Fichas, mestre, jogadores, administração e links de acesso, salvamento automático, backup, atalho Ctrl+K e a ponte `window.Mesa` |
+| `dist/sessao.html` / `.js` / `.css` | Página Sessão: a ficha para jogar ([docs/pagina-sessao.md](docs/pagina-sessao.md)) |
+| `dist/grupo.html` / `.js` / `.css` | Painel do grupo, só do mestre ([docs/painel-do-grupo.md](docs/painel-do-grupo.md)) |
+| `dist/ficha-calc.js` | Contas puras da ficha (PV, ataques múltiplos, espaços de magia, volume) |
+| `dist/regras.js` | Detalhe das regras do catálogo, compartilhado por busca, Sessão e Grupo |
+| `dist/entrar.html` / `.js` | Entrada por código de acesso |
 | `dist/mesa.html` | Página de personagens e convites |
 | `dist/index.html` | Ficha de um personagem |
 | `dist/progressao.html` | Progressão e talentos |
@@ -33,11 +41,17 @@ O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e
 | `drizzle/*.sql` | Migrações já usadas em produção; preservar histórico (`0002` cria as tabelas srd_*) |
 | `.openai/hosting.json` | Identidade do Site e nomes lógicos dos recursos |
 | `scripts/build-worker.mjs` | Monta o Worker e embute o frontend |
-| `scripts/test-worker.mjs` | 59 verificações de isolamento, papéis, migração, conflitos e busca SRD |
+| `scripts/run-tests.mjs` | `npm test`: monta o Worker e roda todas as suítes `scripts/test-*.mjs` |
+| `scripts/test-worker.mjs` | Worker: isolamento, papéis, migração, conflitos, busca SRD, campos da ficha, limites |
+| `scripts/test-platform.mjs` | Plataforma: login, sessão, identidade forjada, origem, arquivos, backup |
+| `scripts/test-ficha-calc.mjs`, `scripts/test-items.mjs` | Contas da ficha e catálogo de itens (texto sintético) |
 | `scripts/render-books.py` | Regenera as 791 imagens de páginas a partir dos PDFs incluídos (requer PyMuPDF) |
 | `scripts/render-pages.mjs` | Mesmas imagens usando poppler (`pdftoppm`), sem PyMuPDF |
 | `scripts/extract-text.mjs` | Extrai o texto das páginas dos dois livros (pdftotext) para `data/pages.json` |
-| `scripts/parse-srd.mjs` | Constrói os catálogos (magias, talentos, classes, ancestralidades, condições) e carrega o banco |
+| `scripts/parse-srd.mjs` | Constrói os catálogos (magias, talentos, classes, ancestralidades, condições, itens) e carrega o banco (`DATA_DIR`) |
+| `scripts/srd-items.mjs` | Extração dos itens: tabelas do Livro 1 e itens mágicos/alquímicos do Livro 2 ([docs/catalogo-de-itens.md](docs/catalogo-de-itens.md)) |
+| `scripts/preparar.mjs`, `Dockerfile` | Hospedagem: recria o catálogo ao subir e empacota só o código ([docs/deploy.md](docs/deploy.md)) |
+| `scripts/novo-codigo.mjs` | `npm run codigo`: gera um código de acesso para `MESA_CODIGO_ADMIN` |
 | `scripts/local-db.mjs` | Banco local compartilhado (node:sqlite + migrações) e adaptador D1 |
 
 ## Servidor local (npm run dev)

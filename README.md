@@ -1,38 +1,49 @@
 # Mesa Pathfinder
 
-Mesa privada com autenticação do Sites e autorização no servidor. Jogadores veem e editam seus personagens; mestres consultam todos, sem editar fichas alheias. A conta indicada por `TABLE_OWNER_EMAIL` administra os convites e papéis, independentemente de ser jogadora ou mestre.
+Mesa privada de Pathfinder 2e com autorização no servidor. Jogadores veem e editam seus personagens; mestres consultam todos, sem editar fichas alheias. A conta indicada por `TABLE_OWNER_EMAIL` administra os convites e papéis, independentemente de ser jogadora ou mestre.
 
-## Rodar localmente (uso pessoal)
+## O que tem
+
+| Página | Para quê |
+| --- | --- |
+| `mesa.html` | personagens da conta (o mestre vê todos), convites e papéis; o cartão abre a Sessão |
+| `sessao.html` | **a ficha para jogar**: PV com dano/cura, defesas, condições, golpes com ataques múltiplos, perícias, magias com espaços e foco, talentos e itens com a regra a um toque ([docs/pagina-sessao.md](docs/pagina-sessao.md)) |
+| `grupo.html` | **painel do mestre**: PV, CA, Percepção, salvamentos e condições de todos, atualizando sozinho ([docs/painel-do-grupo.md](docs/painel-do-grupo.md)) |
+| `index.html`, `progressao.html`, `anotacoes.html` | edição completa da ficha |
+| `busca.html` | busca de regras nos dois livros (atalho Ctrl+K) |
+| `livro.html` | visualizador das páginas dos livros |
+| `entrar.html` | entrada por código de acesso (modo mesa) |
+
+## Rodar
 
 ```sh
-npm run build          # gera dist/server/index.js (Worker com frontend embutido)
+npm run build          # monta dist/server/index.js (Worker com o frontend embutido)
 npm run render:pages   # gera books/rendered/ (791 JPGs via pdftoppm/poppler)
-npm run parse          # extrai os catálogos dos PDFs e carrega data/local.db
-npm run dev            # http://127.0.0.1:8787 — você entra como administrador
+npm run parse          # extrai os catálogos dos PDFs (precisa de data/pages.json; npm run extract gera)
+npm run dev            # só você: http://127.0.0.1:8787, entra direto como administrador
+npm run mesa           # a mesa toda, com login por código (precisa de MESA_CODIGO_ADMIN; npm run codigo gera)
 ```
 
-O servidor local usa o mesmo Worker do build com SQLite local e imagens em disco; escuta apenas `127.0.0.1`. Para trocar o administrador local, copie `.env.example` para `.env`.
+O servidor (`server.mjs` + `local/platform.mjs`) roda o mesmo Worker do build com SQLite local e as imagens em disco, e faz o papel que o ChatGPT Sites fazia: login e arquivos. Variáveis, convites, segurança e backups em [docs/servidor-da-mesa.md](docs/servidor-da-mesa.md); hospedagem fixa em [docs/deploy.md](docs/deploy.md).
 
-## Busca SRD
+## Busca de regras
 
-`busca.html` oferece consulta rápida (estilo pf2srd/aonprd) aos 2 livros: 2557 entradas estruturadas (magias, magias de foco, rituais, talentos, classes com progressão 1–20, ancestralidades com heranças, condições) e busca de texto completo nas 791 páginas. Filtros por tipo/nível/livro/traço, detalhe completo com "Ver no livro" e atalho Ctrl+K. API: `/api/search`, `/api/entries/:id`, `/api/srd/stats`. Pipeline: `scripts/extract-text.mjs` → `scripts/parse-srd.mjs` (auditoria em `data/srd-report.md`).
+`busca.html` consulta 2.800 entradas estruturadas — magias, magias de foco, rituais, talentos, classes com progressão 1–20, ancestralidades com heranças, condições e 243 itens ([docs/catalogo-de-itens.md](docs/catalogo-de-itens.md)) — e o texto completo das 791 páginas. Filtros por tipo/nível/livro/traço, detalhe completo com "Ver no livro". API: `/api/search`, `/api/entries/:id`, `/api/srd/stats`. Pipeline: `scripts/extract-text.mjs` → `scripts/parse-srd.mjs` (+ `scripts/srd-items.mjs`), auditoria em `data/srd-report.md`.
 
-## Publicação e dados
+## Dados
 
-- O banco D1 `DB` preserva a tabela antiga `character_sheets`; a primeira sessão migra a ficha sem apagá-la. O marcador `legacy_migrations` impede duplicações. Não alterar migrations aplicadas.
-- `characters` possui IDs independentes, dono e versão. Atualizações concorrentes recebem HTTP 409; o navegador preserva o rascunho separado por conta e personagem.
-- `BUCKET` guarda páginas JPG renderizadas dos PDFs fornecidos. As rotas de leitura exigem membro ativo.
-- A rota transitória de importação dos livros foi removida do código após conferir as 791 páginas no R2. `BOOK_UPLOAD_TOKEN` foi removido das configurações. A aplicação não aceita escrita nos livros durante a operação normal.
-- Novos convites precisam de cadastro em `Convites e papéis` **e** liberação de visitante na política privada do Site. O app não envia e-mails nem modifica a política da plataforma.
-- Para publicar a busca SRD no Sites, carregue as tabelas `srd_*` (migração `0002`) no D1 e importe os dados do `parse-srd.mjs`.
+- `characters` tem IDs independentes, dono e versão. Atualizações concorrentes recebem HTTP 409; o navegador preserva o rascunho separado por conta e personagem.
+- A ficha é um JSON validado pelo Worker; os campos da página Sessão (magias, itens, condições, conjuração, heroísmo) são aditivos ([docs/modelo-da-ficha.md](docs/modelo-da-ficha.md)).
+- A tabela antiga `character_sheets` é preservada; a primeira sessão migra a ficha sem apagá-la (`legacy_migrations` impede duplicação). Não alterar migrações aplicadas: `drizzle/` é de produção; as tabelas só do servidor local ficam em `local/migrations/`.
+- Livros (`books/`), banco e catálogos extraídos (`data/*.db`, `data/*.json`) são material licenciado ou derivado dele: ficam fora do git e só são servidos a membros ativos.
 
 ## Verificação
 
-`node scripts/build-worker.mjs`
+```sh
+npm test               # monta o Worker e roda todas as suítes scripts/test-*.mjs
+```
 
-`node scripts/test-worker.mjs`
-
-Testes usam SQLite em memória e identidades sintéticas, sem escrever no banco de produção. São 59 verificações: isolamento, papéis, migração, conflitos de edição e busca SRD.
+Banco em memória e identidades sintéticas, sem rede nem porta aberta: Worker (isolamento, papéis, migração, conflitos, busca, campos da ficha), plataforma (login, sessão, identidade forjada, origem, arquivos, backup), contas da ficha e catálogo de itens.
 
 ## Referências
 
