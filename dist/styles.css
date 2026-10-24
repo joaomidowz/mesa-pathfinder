@@ -174,7 +174,7 @@ dialog form { display: flex; justify-content: flex-end; margin-top: 18px; }
 .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .detail-field { display: grid; grid-template-columns: 130px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: .92rem; }
 .detail-field > span { color: var(--muted); }
-.detail-text { white-space: pre-wrap; margin: 10px 0; line-height: 1.55; }
+.detail-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; line-height: 1.55; }
 .detail-pre { white-space: pre-wrap; background: #121516; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: .84rem; color: var(--muted); }
 .detail-panel h4 { margin: 16px 0 6px; color: var(--gold); font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; }
 .detail-panel table { min-width: 0; }

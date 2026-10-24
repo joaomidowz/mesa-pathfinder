@@ -1,4 +1,4 @@
-# Auditoria da extração — 2026-10-15T19:42:52.506Z
+# Auditoria da extração — 2026-10-24T02:56:01.296Z
 
 | Categoria | Entradas |
 | --- | --- |
@@ -41,3 +41,38 @@
 ## Ancestralidades com problemas: 0
 
 ## Condições com corpo curto: 0
+
+## Itens: 243
+
+| Categoria | Itens |
+| --- | --- |
+| arma avançada | 3 |
+| arma mágica | 5 |
+| arma marcial | 49 |
+| arma marcial à distância | 8 |
+| arma simples | 13 |
+| arma simples à distância | 6 |
+| armadura leve | 4 |
+| armadura mágica | 7 |
+| armadura média | 4 |
+| armadura pesada | 3 |
+| bomba alquímica | 10 |
+| cajado | 3 |
+| consumível | 4 |
+| elixir | 19 |
+| escudo | 4 |
+| escudo mágico | 3 |
+| ferramenta alquímica | 12 |
+| item equipado | 9 |
+| item segurado | 5 |
+| material precioso | 3 |
+| munição | 4 |
+| munição mágica | 8 |
+| mutagênico | 7 |
+| óleo | 4 |
+| poção | 4 |
+| talismã | 6 |
+| varinha | 7 |
+| veneno | 29 |
+
+## Itens suspeitos (sem preço, nome não recuperado ou corpo fora do normal): 0

@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openLocalDb } from './local-db.mjs';
+import { parseEquipmentTables, parseTreasureItems } from './srd-items.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pages = JSON.parse(fs.readFileSync(path.join(root, 'data/pages.json'), 'utf8'));
@@ -455,8 +456,13 @@ const ancestries = parseAncestries();
 const conditions = parseConditions();
 const spells = entries.filter(e => e.type === 'spell' || e.type === 'focus' || e.type === 'ritual');
 const feats = entries.filter(e => e.type === 'feat');
+// Itens (scripts/srd-items.mjs): tabelas de armas, armaduras e escudos do Livro 1 e itens mágicos/alquímicos do Livro 2.
+const items = [
+  ...parseEquipmentTables(byBook.livro1.filter(p => p.chapter === 'Equipamento')),
+  ...parseTreasureItems(byBook.livro2.filter(p => p.chapter === 'Pilha de tesouros')),
+];
 
-for (const [name, list] of Object.entries({ spells, feats, classes, ancestries, conditions })) {
+for (const [name, list] of Object.entries({ spells, feats, classes, ancestries, conditions, items })) {
   fs.writeFileSync(path.join(root, 'data', `${name}.json`), JSON.stringify(list, null, 1));
 }
 
@@ -491,11 +497,18 @@ for (const a of badAnc) report.push(`- ${a.name}: PV=${a.hp}, tamanho="${a.size}
 const noCond = conditions.filter(c => !c.text || c.text.length < 20);
 report.push('', `## Condições com corpo curto: ${noCond.length}`);
 for (const c of noCond) report.push(`- ${c.name} (p.${c.page}): ${(c.text || '').slice(0, 60)}`);
+const itemCategories = items.reduce((acc, item) => acc.set(item.category, (acc.get(item.category) || 0) + 1), new Map());
+report.push('', `## Itens: ${items.length}`, '', '| Categoria | Itens |', '| --- | --- |');
+for (const [category, count] of [...itemCategories].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))) report.push(`| ${category} | ${count} |`);
+const badItems = items.filter(item => !item.price || (item.book === 'livro2' && (!item.nameFixed || item.text.length < 40 || item.text.length > 2200)));
+report.push('', `## Itens suspeitos (sem preço, nome não recuperado ou corpo fora do normal): ${badItems.length}`);
+for (const item of badItems) report.push(`- "${item.name}" (${item.book} p.${item.page}): preço="${item.price}", texto=${item.text.length}`);
 fs.writeFileSync(path.join(root, 'data', 'srd-report.md'), report.join('\n'));
 
 console.log(`Magias: ${spells.filter(e => e.type === 'spell').length} | Foco: ${spells.filter(e => e.type === 'focus').length} | Rituais: ${spells.filter(e => e.type === 'ritual').length} | Talentos: ${feats.length}`);
 console.log(`Classes: ${classes.length} (problemáticas: ${badProg.length}) | Ancestralidades: ${ancestries.length} (problemáticas: ${badAnc.length}) | Condições: ${conditions.length}`);
 console.log(`Sem corpo: ${noText.length} | Nomes despaçados: ${unfixed.length} | Sem categoria: ${noCat.length} | Sem tradições: ${noTrad.length}`);
+console.log(`Itens: ${items.length} (Livro 1: ${items.filter(i => i.book === 'livro1').length}, Livro 2: ${items.filter(i => i.book === 'livro2').length}) | suspeitos: ${badItems.length}`);
 
 // ---------- carga no banco ----------
 const db = openLocalDb();
@@ -503,7 +516,8 @@ db.exec('DELETE FROM srd_entries');
 db.exec('DELETE FROM srd_fts');
 const insertEntry = db.prepare('INSERT INTO srd_entries (id, type, name, norm, level, category, category_norm, traits, traits_norm, book, page, data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
 const insertFts = db.prepare('INSERT INTO srd_fts (rowid, name, text) VALUES (?,?,?)');
-const all = [...entries, ...classes, ...ancestries, ...conditions];
+// Itens por último: as linhas que já existiam mantêm o mesmo rowid no índice de texto.
+const all = [...entries, ...classes, ...ancestries, ...conditions, ...items];
 db.exec('BEGIN');
 let rowid = 0;
 const idCount = new Map();
@@ -517,7 +531,8 @@ for (const entry of all) {
   const text = [entry.text, entry.heightened?.map(hh => `Elevada (+${hh.plus}) ${hh.text}`).join('\n'),
     entry.progression ? 'Progressão: ' + entry.progression.map(p => `${p.level} ${p.features}`).join(' | ') : '',
     entry.heritages ? 'Heranças: ' + entry.heritages.map(hh => `${hh.name}. ${hh.text}`).join(' | ') : '',
-    entry.traditions, entry.range, entry.targets, entry.area, entry.defense, entry.duration, entry.prerequisites]
+    entry.traditions, entry.range, entry.targets, entry.area, entry.defense, entry.duration, entry.prerequisites,
+    ...(entry.type === 'item' ? [entry.category, entry.price, [entry.damage, entry.damageType].filter(Boolean).join(' '), entry.group, entry.usage, entry.activate, ...(entry.variants || []).map(v => `${v.name} ${v.text}`)] : [])]
     .filter(Boolean).join('\n');
   try {
     insertEntry.run(id, entry.type, entry.name, squeeze(entry.name), entry.level ?? null, entry.category || null,

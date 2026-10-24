@@ -49,6 +49,15 @@
         (d.progression?.length ? `<h4>Progressão</h4><div class="table-wrap"><table><thead><tr><th>Nível</th><th>Características de classe</th></tr></thead><tbody>` +
           d.progression.map(row => `<tr><td class="level-cell">${row.level}</td><td>${escapeHtml(row.features)}</td></tr>`).join('') + '</tbody></table></div>' : '');
     }
+    if (entry.type === 'item') {
+      return fieldRow('Categoria', d.category || entry.category) + fieldRow('Preço', d.price) + fieldRow('Uso', d.usage) + fieldRow('Volume', d.bulk) +
+        fieldRow('Mãos', d.hands) + fieldRow('Dano', [d.damage, d.damageType].filter(Boolean).join(' ')) + fieldRow('Grupo', d.group) +
+        fieldRow('Distância', d.range) + fieldRow('Recarga', d.reload) + fieldRow('Bônus de CA', d.acBonus) + fieldRow('Limite de Destreza', d.dexCap) +
+        fieldRow('Força', d.strength) + fieldRow('Penalidade em testes', d.checkPenalty) + fieldRow('Penalidade de Velocidade', d.speedPenalty) +
+        fieldRow('Dureza', d.hardness) + fieldRow('PV (LQ)', d.hitPoints) + fieldRow('Ativação', d.activate) +
+        (d.text ? `<p class="detail-text">${escapeHtml(reflow(d.text))}</p>` : '') +
+        (d.variants?.length ? `<h4>Tipos</h4>` + d.variants.map(v => `<p class="detail-text"><strong>${escapeHtml(v.name)}</strong> · nível ${escapeHtml(v.level)} · ${escapeHtml(v.price)}${v.text ? '\n' + escapeHtml(reflow(v.text)) : ''}</p>`).join('') : '');
+    }
     if (entry.type === 'ancestry') {
       return fieldRow('Pontos de vida', d.hp) + fieldRow('Tamanho', d.size) + fieldRow('Velocidade', d.speed) +
         fieldRow('Melhorias de atributo', (d.boosts || []).join(', ')) + fieldRow('Defeitos de atributo', (d.flaws || []).join(', ')) +
