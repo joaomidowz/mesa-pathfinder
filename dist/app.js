@@ -4,11 +4,12 @@ const DEFAULTS = {
   skills: Object.fromEntries(['acrobatics','arcana','athletics','diplomacy','deception','stealth','intimidation','thievery','crafting','medicine','nature','occultism','performance','religion','society','survival','warfareLore'].map(key=>[key,'0'])),
   languages:'', feats: { ancestry:'',ancestryTalent:'',background:'',class1:'',class2:'',skill2:'',archetype:'' },
   abilities:{}, attacks:[], references:[], fieldReferences:{}, extra:{},
-  inventory:{carried:'',consumables:'',equipped:'',wealth:''},
+  inventory:{carried:'',consumables:'',equipped:'',wealth:'',coins:{pl:'0',po:'0',pp:'0',pc:'0'}},
   notes:{session:'',questions:'',allies:'',enemies:'',organizations:'',personality:'',history:''},
-  // Campos da página Sessão (docs/modelo-da-ficha.md); fichas antigas ganham os vazios no merge.
-  heroPoints:'0', conditions:[], spells:[], items:[],
-  spellcasting:{tradition:'',kind:'',attack:'',dc:'',slots:{},focus:{max:'0',current:'0'}}
+  // Campos da página do personagem (docs/modelo-da-ficha.md); fichas antigas ganham os vazios no merge.
+  heroPoints:'0', luck:'0', conditions:[], spells:[], items:[], choices:[],
+  spellcasting:{tradition:'',kind:'',attack:'',dc:'',slots:{},focus:{max:'0',current:'0'}},
+  defense:{ac:{category:'',dexCap:'',item:''},armorProf:{unarmored:'',light:'',medium:'',heavy:''},shield:{bonus:'',hardness:'',hpMax:'',bt:'',hp:'',cover:'',raised:false},acBonus:'0'}
 };
 const skillInfo = {
   acrobatics:['Acrobatismo','Equilibrar-se, Atravessar Acrobaticamente e Escapar.'],arcana:['Arcanismo','Conhecimentos arcanos, Identificar Magia e Decifrar Escrita apropriada.'],athletics:['Atletismo','Escalar, Nadar, Saltar, Agarrar, Derrubar, Desarmar, Empurrar e Reposicionar. Cada ação tem seus requisitos.'],diplomacy:['Diplomacia','Impressionar, Pedir e Obter Informação.'],deception:['Dissimulação','Mentir, Fintar, Personificar e Criar uma Distração.'],stealth:['Furtividade','Esconder-se, Esgueirar-se e Evitar Observação.'],intimidation:['Intimidação','Desmoralizar em combate e Coagir. Consulte requisitos e imunidade temporária no livro.'],thievery:['Ladroagem','Abrir Fechaduras, Desabilitar Dispositivos, Palmear e Furtar.'],crafting:['Manufatura','Criar, Reparar e identificar materiais e itens apropriados.'],medicine:['Medicina','Primeiros Socorros, Tratar Ferimentos, Doenças e Venenos.'],nature:['Natureza','Conhecimentos naturais, Comandar um Animal e ações mágicas apropriadas.'],occultism:['Ocultismo','Conhecimentos ocultos, espíritos, fenômenos e magia ocultista.'],performance:['Performance','Atuar, cantar, tocar ou realizar apresentações.'],religion:['Religião','Conhecimentos religiosos, divindades, mortos-vivos e magia divina.'],society:['Sociedade','Povos, história, leis, culturas e Subsistir em cidades.'],survival:['Sobrevivência','Rastrear, Subsistir, Orientar-se e Cobrir Rastros.'],warfareLore:['Saber de Guerra','Recordar Conhecimento sobre táticas, batalhas e exércitos.']
@@ -18,7 +19,7 @@ const clone = value => JSON.parse(JSON.stringify(value));
 function merge(base, extra) { for(const [key,value] of Object.entries(extra || {})) { if(['__proto__','prototype','constructor'].includes(key)) continue; if(value && typeof value==='object' && !Array.isArray(value)) base[key]=merge(base[key] && typeof base[key]==='object' ? base[key] : {},value); else base[key]=value; } return base; }
 function getByPath(object,path) { return path.split('.').reduce((value,key)=>value?.[key],object); }
 function setByPath(object,path,value) { const parts=path.split('.'); if(parts.some(key=>['__proto__','prototype','constructor'].includes(key))) return; let target=object; for(const key of parts.slice(0,-1)) target=target[key] ||= {}; target[parts.at(-1)]=value; }
-let session, character, data, books=[], pending=false, conflict=false, timer, saving=null, editCounter=0;
+let session, character, data, books=[], pending=false, conflict=false, draftVersion=null, timer, saving=null, editCounter=0;
 const isMesa = location.pathname.endsWith('/mesa.html');
 let selectedId = new URLSearchParams(location.search).get('character');
 function localKey() { return `mesa-v4:${session.user.id}:${character.id}`; }
@@ -37,7 +38,8 @@ function accessCodes() { return session?.invitationMode==='access-code'; }
 function emailLogin() { return session?.invitationMode==='email'; }
 function ownServer() { return accessCodes() || emailLogin(); }
 function setStatus(message,state='') { document.querySelectorAll('[data-cloud-status]').forEach(el=>{el.textContent=message;el.dataset.state=state;}); document.querySelectorAll('[data-save-status]').forEach(el=>el.textContent=state==='saved'?' · salvo':state==='saving'?' · salvando…':''); }
-function backupLocal() { if(!character || readOnly()) return; try { localStorage.setItem(localKey(),JSON.stringify({data,version:character.version,pending,updatedAt:new Date().toISOString()})); } catch { setStatus('Não foi possível gravar o backup neste aparelho. Use Baixar backup.','offline'); } }
+// Em conflito, o rascunho guarda a versão em que as edições se basearam: assim o conflito continua visível ao recarregar.
+function backupLocal() { if(!character || readOnly()) return; try { localStorage.setItem(localKey(),JSON.stringify({data,version:conflict && draftVersion!=null ? draftVersion : character.version,pending,updatedAt:new Date().toISOString()})); } catch { setStatus('Não foi possível gravar o backup neste aparelho. Use Baixar backup.','offline'); } }
 function dirty() { if(readOnly()) return; pending=true;editCounter++;backupLocal();setStatus('Alterações pendentes · salvamento automático…','saving');clearTimeout(timer);timer=setTimeout(saveData,1100); }
 async function saveData() {
   clearTimeout(timer);
@@ -56,11 +58,12 @@ function updateCalculations() { document.querySelectorAll('[data-calc="rage-temp
 function bindField(el) {
   const path=el.dataset.bind || 'extra.'+el.dataset.saveKey;
   const value=getByPath(data,path) ?? '';
-  if('value' in el) el.value=value;else el.textContent=value;
+  if(el.type==='checkbox') el.checked=!!value;else if('value' in el) el.value=value;else el.textContent=value;
   if(el.dataset.wired) return;el.dataset.wired='1';
-  el.addEventListener('input',()=>{setByPath(data,path,el.type==='checkbox'?el.checked:el.value);document.querySelectorAll('[data-bind]').forEach(other=>{if(other!==el && other.dataset.bind===path) {if('value' in other) other.value=el.value;else other.textContent=el.value;}});updateCalculations();dirty();});
+  el.addEventListener('input',()=>{const next=el.type==='checkbox'?el.checked:el.value;setByPath(data,path,next);document.querySelectorAll('[data-bind]').forEach(other=>{if(other!==el && other.dataset.bind===path) {if(other.type==='checkbox') other.checked=!!next;else if('value' in other) other.value=next;else other.textContent=next;}});updateCalculations();dirty();});
 }
-function bindAll(root=document) { root.querySelectorAll('[data-bind],[data-save-key]').forEach(bindField); if(readOnly()) root.querySelectorAll('input,textarea,select,[data-mutate]').forEach(el=>el.disabled=true); }
+// [data-free] fica livre até na visão do mestre (ex.: o campo de pesquisa de regras).
+function bindAll(root=document) { root.querySelectorAll('[data-bind],[data-save-key]').forEach(bindField); if(readOnly()) root.querySelectorAll('input:not([data-free]),textarea:not([data-free]),select:not([data-free]),[data-mutate]').forEach(el=>el.disabled=true); }
 function refMarkup(path,ref={}) {
   ref ||= {};
   const book=books.find(book=>book.id===ref.book);
@@ -115,9 +118,10 @@ async function initCharacter() {
   data=merge(clone(DEFAULTS),character.data);migrateReferences();
   // Nunca misturar dados de contas/personagens nem substituir nuvem automaticamente.
   const draft=localStorage.getItem(localKey());
-  if(draft && !readOnly()) {try {const parsed=JSON.parse(draft);if(parsed.pending && confirm('Há alterações locais não enviadas desta ficha. Restaurar para revisar?')) {data=merge(clone(DEFAULTS),parsed.data);pending=true;conflict=parsed.version!==character.version;}}catch{}}
+  if(draft && !readOnly()) {try {const parsed=JSON.parse(draft);if(parsed.pending && confirm('Há alterações locais não enviadas desta ficha. Restaurar para revisar?')) {data=merge(clone(DEFAULTS),parsed.data);pending=true;conflict=parsed.version!==character.version;if(conflict)draftVersion=parsed.version;}}catch{}}
   document.title=(data.profile.name || 'Personagem')+' · Mesa Pathfinder';
-  document.querySelectorAll('nav').forEach(nav=>{nav.innerHTML=`<a href="mesa.html">Mesa</a><a href="grupo.html">Grupo</a><a href="sessao.html?character=${encodeURIComponent(selectedId)}">Sessão</a><a href="index.html?character=${encodeURIComponent(selectedId)}">Ficha</a><a href="progressao.html?character=${encodeURIComponent(selectedId)}">Progressão</a><a href="anotacoes.html?character=${encodeURIComponent(selectedId)}">Anotações</a><a href="busca.html">Buscar regras</a>`;});
+  // Ficha, Combate e Pesquisa são abas da própria página do personagem; o menu leva ao resto da mesa.
+  document.querySelectorAll('.topbar nav').forEach(nav=>{nav.innerHTML='<a href="mesa.html">Mesa</a><a href="grupo.html">Grupo</a><a href="livro.html">Livros</a><a href="busca.html">Buscar</a>';});
   augmentFieldReferences();renderDynamic();addControls();updateCalculations();
   document.querySelectorAll('[data-save]').forEach(button=>{button.disabled=readOnly();button.addEventListener('click',saveData);});
   document.querySelectorAll('[data-reset]').forEach(button=>{button.hidden=true;});
@@ -127,7 +131,7 @@ async function initCharacter() {
   document.querySelectorAll('[data-now]').forEach(el=>el.textContent=new Date().toLocaleDateString('pt-BR'));
   setStatus(readOnly()?'Visão do mestre · somente leitura':pending?'Backup local restaurado · revise e salve':'Ficha carregada da nuvem · salvamento automático',readOnly()?'':'saved');
   document.addEventListener('input',event=>{if(event.target.matches('[data-bind],[data-save-key]'))backupLocal();});
-  document.querySelectorAll('nav a').forEach(link=>link.addEventListener('click',async event=>{if(!pending)return;event.preventDefault();const ok=await saveData();if(ok || confirm('Ainda há alterações não salvas na nuvem. Sair mesmo assim?'))location.href=link.href;}));
+  document.querySelectorAll('.topbar nav a').forEach(link=>link.addEventListener('click',async event=>{if(!pending)return;event.preventDefault();const ok=await saveData();if(ok || confirm('Ainda há alterações não salvas na nuvem. Sair mesmo assim?'))location.href=link.href;}));
   window.addEventListener('beforeunload',event=>{if(pending){backupLocal();event.preventDefault();event.returnValue='';}});
   document.addEventListener('visibilitychange',()=>{if(document.hidden && pending && !conflict)saveData();});
   window.addEventListener('online',()=>{if(pending&&!conflict)saveData();});
@@ -135,8 +139,8 @@ async function initCharacter() {
 }
 async function createCharacter(form) {
   const values=new FormData(form),next=clone(DEFAULTS);
-  next.profile.name=String(values.get('name')).trim();next.profile.player=String(values.get('player')||'');next.profile.className=String(values.get('className')||'');next.profile.ancestry=String(values.get('ancestry')||'');
-  const result=await api('characters','POST',{data:next});location.href='index.html?character='+encodeURIComponent(result.id);
+  next.profile.name=String(values.get('name')).trim();next.profile.player=String(values.get('player')||'');next.profile.className=String(values.get('className')||'');next.profile.ancestry=String(values.get('ancestry')||'');next.sheetVersion='2';
+  const result=await api('characters','POST',{data:next});location.href='sessao.html?character='+encodeURIComponent(result.id)+'#ficha';
 }
 async function refreshMembers() {
   const root=document.querySelector('[data-members]');if(!root || !session.user.admin)return;
@@ -175,7 +179,7 @@ async function initMesa() {
   }
   document.querySelector('[data-copy-link]').addEventListener('click',async()=>{const input=document.querySelector('[data-invite-link]');try{await navigator.clipboard.writeText(input.value);document.querySelector('[data-invite-result]').textContent=ownServer()?'Link copiado. Mande só para a pessoa convidada.':'Link copiado. O convidado precisa entrar com o e-mail cadastrado e ter acesso privado ao Site.';}catch{input.select();}});
   const old=localStorage.getItem('ficha-anao-barbaro-v2')||localStorage.getItem('ficha-anao-barbaro-local-backup');
-  const recover=document.querySelector('[data-recover-old]');recover.hidden=!(old&&session.user.admin);recover.addEventListener('click',async()=>{try{const oldData=JSON.parse(old);if(!confirm('Criar uma cópia separada da ficha antiga deste navegador? Nenhum personagem existente será substituído.'))return;for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key?.startsWith('ficha-anao-barbaro-field-')){oldData.extra ||= {};oldData.extra[key.replace('ficha-anao-barbaro-field-','')]=localStorage.getItem(key);}}const result=await api('characters','POST',{data:oldData});location.href='index.html?character='+result.id;}catch(error){alert(error.message);}});
+  const recover=document.querySelector('[data-recover-old]');recover.hidden=!(old&&session.user.admin);recover.addEventListener('click',async()=>{try{const oldData=JSON.parse(old);if(!confirm('Criar uma cópia separada da ficha antiga deste navegador? Nenhum personagem existente será substituído.'))return;for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key?.startsWith('ficha-anao-barbaro-field-')){oldData.extra ||= {};oldData.extra[key.replace('ficha-anao-barbaro-field-','')]=localStorage.getItem(key);}}const result=await api('characters','POST',{data:oldData});location.href='sessao.html?character='+encodeURIComponent(result.id)+'#ficha';}catch(error){alert(error.message);}});
 }
 async function init() {
   document.querySelectorAll('main input,main textarea,main select,main button').forEach(el=>el.disabled=true);
@@ -183,7 +187,7 @@ async function init() {
   catch(error){const main=document.querySelector('main');main.replaceChildren();const section=document.createElement('section');section.className='panel';const title=document.createElement('h1');title.textContent='Acesso à mesa';const message=document.createElement('p');message.textContent=error.message;const login=document.createElement('a');login.className='btn primary';login.href='/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.search);login.target='_top';login.textContent='Entrar';section.append(title,message,login);main.append(section);}
 }
 // Ponte para os scripts das páginas novas (sessao.js): mesma ficha, salvamento automático, backup local e conflito.
-window.Mesa={get session(){return session;},get character(){return character;},get data(){return data;},get books(){return books;},api,dirty,saveData,bindAll,readOnly,escapeAttr,openHelp,skillInfo};
+window.Mesa={get session(){return session;},get character(){return character;},get data(){return data;},get books(){return books;},get conflict(){return conflict;},api,dirty,saveData,bindAll,readOnly,escapeAttr,openHelp,skillInfo,updateCalculations};
 document.addEventListener('DOMContentLoaded',init);
 // Ctrl+K abre a busca de regras a partir de qualquer página da ficha/mesa.
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();const selection=String(window.getSelection()||'').trim();location.href='busca.html'+(selection?'?q='+encodeURIComponent(selection):'');}});
