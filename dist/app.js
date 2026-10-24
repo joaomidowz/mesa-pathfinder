@@ -30,9 +30,12 @@ async function request(url,method='GET',payload) {
   return result;
 }
 function api(path,method,payload) { return request('/api/'+path,method,payload); }
-// Rotas do servidor da mesa (login por código); só existem quando session.invitationMode é 'access-code'.
+// Rotas do servidor da mesa (/auth/*): só existem quando session.invitationMode é 'access-code' (cada um com o seu
+// código) ou 'email' (jogadores e mestre entram só com o e-mail cadastrado).
 function auth(path,payload) { return request('/auth/'+path,'POST',payload || {}); }
 function accessCodes() { return session?.invitationMode==='access-code'; }
+function emailLogin() { return session?.invitationMode==='email'; }
+function ownServer() { return accessCodes() || emailLogin(); }
 function setStatus(message,state='') { document.querySelectorAll('[data-cloud-status]').forEach(el=>{el.textContent=message;el.dataset.state=state;}); document.querySelectorAll('[data-save-status]').forEach(el=>el.textContent=state==='saved'?' · salvo':state==='saving'?' · salvando…':''); }
 function backupLocal() { if(!character || readOnly()) return; try { localStorage.setItem(localKey(),JSON.stringify({data,version:character.version,pending,updatedAt:new Date().toISOString()})); } catch { setStatus('Não foi possível gravar o backup neste aparelho. Use Baixar backup.','offline'); } }
 function dirty() { if(readOnly()) return; pending=true;editCounter++;backupLocal();setStatus('Alterações pendentes · salvamento automático…','saving');clearTimeout(timer);timer=setTimeout(saveData,1100); }
@@ -114,7 +117,7 @@ async function initCharacter() {
   const draft=localStorage.getItem(localKey());
   if(draft && !readOnly()) {try {const parsed=JSON.parse(draft);if(parsed.pending && confirm('Há alterações locais não enviadas desta ficha. Restaurar para revisar?')) {data=merge(clone(DEFAULTS),parsed.data);pending=true;conflict=parsed.version!==character.version;}}catch{}}
   document.title=(data.profile.name || 'Personagem')+' · Mesa Pathfinder';
-  document.querySelectorAll('nav').forEach(nav=>{nav.innerHTML=`<a href="mesa.html">Mesa</a><a href="sessao.html?character=${encodeURIComponent(selectedId)}">Sessão</a><a href="index.html?character=${encodeURIComponent(selectedId)}">Ficha</a><a href="progressao.html?character=${encodeURIComponent(selectedId)}">Progressão</a><a href="anotacoes.html?character=${encodeURIComponent(selectedId)}">Anotações</a><a href="busca.html">Buscar regras</a>`;});
+  document.querySelectorAll('nav').forEach(nav=>{nav.innerHTML=`<a href="mesa.html">Mesa</a><a href="grupo.html">Grupo</a><a href="sessao.html?character=${encodeURIComponent(selectedId)}">Sessão</a><a href="index.html?character=${encodeURIComponent(selectedId)}">Ficha</a><a href="progressao.html?character=${encodeURIComponent(selectedId)}">Progressão</a><a href="anotacoes.html?character=${encodeURIComponent(selectedId)}">Anotações</a><a href="busca.html">Buscar regras</a>`;});
   augmentFieldReferences();renderDynamic();addControls();updateCalculations();
   document.querySelectorAll('[data-save]').forEach(button=>{button.disabled=readOnly();button.addEventListener('click',saveData);});
   document.querySelectorAll('[data-reset]').forEach(button=>{button.hidden=true;});
@@ -138,15 +141,21 @@ async function createCharacter(form) {
 async function refreshMembers() {
   const root=document.querySelector('[data-members]');if(!root || !session.user.admin)return;
   const result=await api('members');
-  root.innerHTML=result.members.map(member=>`<article class="member-row"><div><strong>${escapeAttr(member.email)}</strong><small>${member.active?(member.accepted?'Entrou na mesa':accessCodes()?'Cadastrado · ainda não entrou':'Cadastrado · acesso privado do Site necessário'):'Acesso revogado'}</small>${accessCodes()&&member.active&&member.email!==session.user.email?`<button type="button" class="info-button section-space" data-new-code="${escapeAttr(member.email)}">Novo link de acesso</button>`:''}</div><select aria-label="Papel de ${escapeAttr(member.email)}" data-role-email="${escapeAttr(member.email)}"><option value="player" ${member.role==='player'?'selected':''}>Jogador</option><option value="master" ${member.role==='master'?'selected':''}>Mestre</option></select><button class="btn" data-revoke="${escapeAttr(member.email)}" ${member.email===session.user.email?'disabled':''}>Revogar</button></article>`).join('');
+  root.innerHTML=result.members.map(member=>`<article class="member-row"><div><strong>${escapeAttr(member.email)}</strong><small>${member.active?(member.accepted?'Entrou na mesa':ownServer()?'Cadastrado · ainda não entrou':'Cadastrado · acesso privado do Site necessário'):'Acesso revogado'}</small>${accessCodes()&&member.active&&member.email!==session.user.email?`<button type="button" class="info-button section-space" data-new-code="${escapeAttr(member.email)}">Novo link de acesso</button>`:''}${emailLogin()&&member.active&&member.email!==session.user.email?`<button type="button" class="info-button section-space" data-email-link="${escapeAttr(member.email)}">Link de entrada</button>`:''}</div><select aria-label="Papel de ${escapeAttr(member.email)}" data-role-email="${escapeAttr(member.email)}"><option value="player" ${member.role==='player'?'selected':''}>Jogador</option><option value="master" ${member.role==='master'?'selected':''}>Mestre</option></select><button class="btn" data-revoke="${escapeAttr(member.email)}" ${member.email===session.user.email?'disabled':''}>Revogar</button></article>`).join('');
   root.querySelectorAll('[data-role-email]').forEach(select=>select.addEventListener('change',async()=>{if(!confirm(`Alterar o papel de ${select.dataset.roleEmail} para ${select.value==='master'?'mestre (verá todas as fichas)':'jogador'}?`)){await refreshMembers();return;}try{await api('members','POST',{email:select.dataset.roleEmail,role:select.value});location.reload();}catch(error){alert(error.message);}}));
   root.querySelectorAll('[data-revoke]').forEach(button=>button.addEventListener('click',async()=>{if(!confirm('Revogar o acesso à mesa? As fichas serão mantidas.'))return;try{await api('members','DELETE',{email:button.dataset.revoke});await refreshMembers();}catch(error){alert(error.message);}}));
   root.querySelectorAll('[data-new-code]').forEach(button=>button.addEventListener('click',async()=>{if(!confirm(`Gerar um novo link de acesso para ${button.dataset.newCode}? O link antigo e os aparelhos conectados deixam de funcionar.`))return;try{await showAccess(button.dataset.newCode);document.querySelector('[data-invite-result]').scrollIntoView({block:'center'});}catch(error){alert(error.message);}}));
+  root.querySelectorAll('[data-email-link]').forEach(button=>button.addEventListener('click',()=>{showEmailLink(button.dataset.emailLink);document.querySelector('[data-invite-result]').scrollIntoView({block:'center'});}));
 }
 async function showAccess(email) {
   const access=await auth('code',{email});
   document.querySelector('[data-invite-result]').textContent=`Link de acesso de ${access.email} pronto. Mande só para essa pessoa: ele entra direto e vale como senha (código ${access.code}).`;
   document.querySelector('[data-invite-link]').value=access.link;
+}
+// Modo e-mail: o link leva o e-mail no fragmento (#nome@email.com) e a página de entrada entra sozinha com ele.
+function showEmailLink(email) {
+  document.querySelector('[data-invite-result]').textContent=`Link de entrada de ${email} pronto. Quem abrir entra direto como essa pessoa, sem senha: mande só para ela.`;
+  document.querySelector('[data-invite-link]').value=new URL('/entrar.html#'+email,location.href).href;
 }
 async function initMesa() {
   document.querySelector('[data-account]').textContent=session.user.email;
@@ -156,15 +165,15 @@ async function initMesa() {
   root.innerHTML=result.characters.length?result.characters.map(item=>`<a class="character-card" href="sessao.html?character=${encodeURIComponent(item.id)}"><div class="eyebrow">${item.owned?'Seu personagem':'Visão do mestre · leitura'}</div><h3>${escapeAttr(item.name || 'Sem nome')}</h3><p>${escapeAttr(item.ancestry)} · ${escapeAttr(item.className || 'Classe a definir')} · Nível ${escapeAttr(item.level)}</p><small>${escapeAttr(item.ownerEmail)}</small><span class="card-arrow">Abrir ficha ↗</span></a>`).join(''):'<div class="note">Você ainda não criou um personagem. Comece pelo formulário abaixo.</div>';
   document.querySelector('[data-create]').addEventListener('submit',async event=>{event.preventDefault();const button=event.target.querySelector('button');button.disabled=true;try{await createCharacter(event.target);}catch(error){alert(error.message);button.disabled=false;}});
   const admin=document.querySelector('[data-admin]');admin.hidden=!session.user.admin;
-  document.querySelectorAll('[data-master-only]').forEach(el=>el.hidden=session.user.role!=='master');
-  const logout=document.querySelector('[data-logout]');logout.hidden=!accessCodes();logout.addEventListener('click',async()=>{try{await auth('logout');}finally{location.href='/entrar.html';}});
+  const logout=document.querySelector('[data-logout]');logout.hidden=!ownServer();logout.addEventListener('click',async()=>{try{await auth('logout');}finally{location.href='/entrar.html';}});
   if(session.user.admin){
     document.querySelector('[data-invite-link]').value=new URL('/mesa.html',location.href).href;
     if(accessCodes())document.querySelector('[data-invite-help]').innerHTML='1. Cadastre o e-mail e o papel abaixo.<br>2. Copie o link de acesso que aparece e mande só para essa pessoa: ele entra direto e vale como senha.<br>3. Perdeu o link? Gere um novo na lista abaixo; os aparelhos antigos saem da conta.';
+    else if(emailLogin())document.querySelector('[data-invite-help]').innerHTML='1. Cadastre o e-mail e o papel abaixo.<br>2. Copie o link de entrada que aparece e mande para a pessoa: ela entra só com o e-mail, sem senha.<br>3. Quem souber o e-mail entra como a pessoa: use um e-mail que só a mesa conheça. Revogar corta o acesso na hora.';
     await refreshMembers();
-    document.querySelector('[data-invite]').addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.target);try{const result=await api('members','POST',{email:form.get('email'),role:form.get('role')});if(accessCodes())await showAccess(result.email);else{document.querySelector('[data-invite-result]').textContent=`${result.email} cadastrado. Agora libere esse e-mail em Compartilhar no Site e envie o link abaixo. Este cadastro não envia e-mail automaticamente.`;document.querySelector('[data-invite-link]').value=result.link;}await refreshMembers();event.target.reset();}catch(error){alert(error.message);}});
+    document.querySelector('[data-invite]').addEventListener('submit',async event=>{event.preventDefault();const form=new FormData(event.target);try{const result=await api('members','POST',{email:form.get('email'),role:form.get('role')});if(accessCodes())await showAccess(result.email);else if(emailLogin())showEmailLink(result.email);else{document.querySelector('[data-invite-result]').textContent=`${result.email} cadastrado. Agora libere esse e-mail em Compartilhar no Site e envie o link abaixo. Este cadastro não envia e-mail automaticamente.`;document.querySelector('[data-invite-link]').value=result.link;}await refreshMembers();event.target.reset();}catch(error){alert(error.message);}});
   }
-  document.querySelector('[data-copy-link]').addEventListener('click',async()=>{const input=document.querySelector('[data-invite-link]');try{await navigator.clipboard.writeText(input.value);document.querySelector('[data-invite-result]').textContent=accessCodes()?'Link copiado. Mande só para a pessoa convidada.':'Link copiado. O convidado precisa entrar com o e-mail cadastrado e ter acesso privado ao Site.';}catch{input.select();}});
+  document.querySelector('[data-copy-link]').addEventListener('click',async()=>{const input=document.querySelector('[data-invite-link]');try{await navigator.clipboard.writeText(input.value);document.querySelector('[data-invite-result]').textContent=ownServer()?'Link copiado. Mande só para a pessoa convidada.':'Link copiado. O convidado precisa entrar com o e-mail cadastrado e ter acesso privado ao Site.';}catch{input.select();}});
   const old=localStorage.getItem('ficha-anao-barbaro-v2')||localStorage.getItem('ficha-anao-barbaro-local-backup');
   const recover=document.querySelector('[data-recover-old]');recover.hidden=!(old&&session.user.admin);recover.addEventListener('click',async()=>{try{const oldData=JSON.parse(old);if(!confirm('Criar uma cópia separada da ficha antiga deste navegador? Nenhum personagem existente será substituído.'))return;for(let i=0;i<localStorage.length;i++){const key=localStorage.key(i);if(key?.startsWith('ficha-anao-barbaro-field-')){oldData.extra ||= {};oldData.extra[key.replace('ficha-anao-barbaro-field-','')]=localStorage.getItem(key);}}const result=await api('characters','POST',{data:oldData});location.href='index.html?character='+result.id;}catch(error){alert(error.message);}});
 }

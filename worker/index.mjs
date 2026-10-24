@@ -56,6 +56,18 @@ async function findCharacter(id, user, env, write = false) {
   if (!record || (record.owner_id !== user.id && (user.role !== 'master' || write))) fail(404, 'Ficha não encontrada ou sem permissão.');
   return record;
 }
+// Painel do grupo: só o que a mesa toda vê na hora do jogo (PV, defesas, condições), nunca anotações, inventário ou magias.
+// O e-mail do dono vai só para o mestre.
+const PARTY_PROFILE = ['name','player','level','className','ancestry'];
+const PARTY_STATS = ['hpMax','hpCurrent','hpTemp','ac','perception','fort','reflex','will','classDc'];
+function partySummary(record, user) {
+  let data = {};
+  try { data = JSON.parse(record.data) || {}; } catch {}
+  const pick = (object, keys) => Object.fromEntries(keys.filter(key => object?.[key] != null && typeof object[key] !== 'object').map(key => [key, String(object[key])]));
+  const conditions = Array.isArray(data.conditions) ? data.conditions.map(item => ({ name: String(item?.name ?? ''), value: String(item?.value ?? '') })) : [];
+  const owned = record.owner_id === user.id;
+  return { id: record.id, name: record.name, owned, version: record.version, updatedAt: record.updated_at, ...(user.role === 'master' && !owned ? { ownerEmail: record.owner_email } : {}), data: { profile: pick(data.profile, PARTY_PROFILE), stats: pick(data.stats, PARTY_STATS), spellcasting: pick(data.spellcasting, ['dc']), heroPoints: String(data.heroPoints ?? '0'), conditions } };
+}
 // --- SRD: consulta às regras estruturadas extraídas dos livros (tabelas srd_*) ---
 const SRD_TYPES = ['spell', 'focus', 'ritual', 'feat', 'class', 'ancestry', 'condition', 'item'];
 const srdDeaccent = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -161,6 +173,11 @@ async function api(request, env, path) {
       await env.DB.prepare('UPDATE table_members SET active = 0, updated_at = ?1 WHERE email = ?2').bind(new Date().toISOString(), email).run();
       return json({ ok: true });
     }
+  }
+  // Grupo: fichas dos jogadores ativos para qualquer pessoa da mesa; as fichas do próprio mestre (criaturas, NPCs) só para ele.
+  if (path === '/api/party' && method === 'GET') {
+    const records = (await env.DB.prepare("SELECT id, owner_id, owner_email, name, version, updated_at, data FROM characters WHERE owner_id = ?1 OR owner_id IN (SELECT user_id FROM table_members WHERE role = 'player' AND active = 1 AND user_id IS NOT NULL) ORDER BY name").bind(user.id).all()).results;
+    return json({ characters: records.map(record => partySummary(record, user)) });
   }
   if (path === '/api/characters' && method === 'GET') {
     const columns = 'id, owner_id, owner_email, name, version, updated_at, data';

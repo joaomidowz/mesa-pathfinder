@@ -1,7 +1,8 @@
 // Servidor da Mesa Pathfinder: roda o mesmo Worker do build (dist/server/index.js) com banco SQLite local e as
 // páginas dos livros em disco. A plataforma (local/platform.mjs) faz o papel do ChatGPT Sites: login e arquivos.
 //   npm run dev  → só 127.0.0.1, entra direto como administrador (uso pessoal);
-//   npm run mesa → login por código de acesso, para a rede de casa ou a hospedagem (npm start).
+//   npm run mesa → login por código de acesso (ou só pelo e-mail, com MESA_LOGIN=email), para a rede de casa ou a
+//                  hospedagem (npm start).
 import http from 'node:http';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -82,7 +83,7 @@ function addresses() {
 server.listen(config.port, config.host, () => {
   console.log(`Mesa Pathfinder — modo ${config.mode === 'mesa' ? 'mesa (com login)' : 'dev (só você, sem login)'}`);
   for (const address of addresses()) console.log(`  ${address}/mesa.html`);
-  if (config.mode === 'mesa') console.log('Administrador: entre com o código de MESA_CODIGO_ADMIN e convide a mesa pela tela de Personagens.');
+  if (config.mode === 'mesa') console.log(config.loginMode === 'email' ? 'Jogadores e mestre entram só com o e-mail cadastrado; o administrador, com o código de MESA_CODIGO_ADMIN.' : 'Administrador: entre com o código de MESA_CODIGO_ADMIN e convide a mesa pela tela de Personagens.');
   else console.log(`Conectado como administrador: ${config.ownerEmail}`);
   if (!fs.existsSync(config.booksDir)) console.log('(páginas dos livros ausentes: rode "npm run render:pages" ou ajuste BOOKS_DIR)');
 });

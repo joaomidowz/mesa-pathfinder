@@ -7,7 +7,7 @@ O mesmo Worker do build (`dist/server/index.js`) roda no Node com SQLite local e
 | Comando | Para quê | Login | Escuta em |
 | --- | --- | --- | --- |
 | `npm run dev` | uso pessoal no próprio computador | nenhum: entra como administrador | só `127.0.0.1` (recusa outro HOST) |
-| `npm run mesa` / `npm start` | a mesa toda, na rede ou na hospedagem | código de acesso por pessoa | `0.0.0.0` (ou `HOST`) |
+| `npm run mesa` / `npm start` | a mesa toda, na rede ou na hospedagem | código de acesso por pessoa, ou só o e-mail (`MESA_LOGIN=email`) | `0.0.0.0` (ou `HOST`) |
 
 Antes do primeiro uso: `npm run build`, as páginas dos livros (`npm run render:pages`) e o catálogo (`npm run parse`).
 
@@ -17,6 +17,7 @@ Antes do primeiro uso: `npm run build`, as páginas dos livros (`npm run render:
 | --- | --- |
 | `TABLE_OWNER_EMAIL` | e-mail do administrador (padrão `mestre@local`) |
 | `MESA_CODIGO_ADMIN` | código de acesso do administrador; obrigatório no modo mesa, 12+ letras ou números. `npm run codigo` gera um |
+| `MESA_LOGIN` | `codigo` (padrão: cada pessoa com o seu código) ou `email` (jogadores e mestre entram só com o e-mail cadastrado) |
 | `HOST`, `PORT` | endereço e porta (a hospedagem costuma definir `PORT`) |
 | `DATA_DIR` | onde ficam `local.db` e `backups/` (padrão `data`) |
 | `BOOKS_DIR` | onde estão as páginas renderizadas (padrão `books/rendered`) |
@@ -31,9 +32,18 @@ Antes do primeiro uso: `npm run build`, as páginas dos livros (`npm run render:
 
 Mudar `MESA_CODIGO_ADMIN` derruba as sessões antigas do administrador.
 
+### Entrada só com o e-mail (`MESA_LOGIN=email`)
+
+Para mesa de amigos, sem código para guardar: quem está cadastrado e ativo em **Convites e papéis** entra digitando o e-mail em `/entrar.html`, ou pelo **link de entrada** (`/entrar.html#nome@email.com`), que a tela mostra ao cadastrar e no botão **Link de entrada** de cada pessoa. O e-mail vai no fragmento do link, que não chega ao servidor, e a página o apaga da barra de endereço.
+
+- O administrador continua entrando só com o código de `MESA_CODIGO_ADMIN`, porque é ele quem convida, troca papéis e revoga.
+- No primeiro login o id da conta fica gravado no cadastro, então todos os aparelhos da pessoa caem na mesma conta e na mesma ficha.
+- Não há segredo: quem souber o e-mail entra como a pessoa (e vê os livros). Use e-mails que só a mesa conheça; **Revogar** corta o acesso na hora.
+- Para voltar aos códigos, troque `MESA_LOGIN` para `codigo` (ou apague a variável) e gere os links de acesso de novo. No modo código, o login por e-mail é recusado.
+
 ## O que protege e por quê
 
-- Código com 60 bits (12 símbolos de um alfabeto de 32): adivinhar é inviável, por isso não há limite de tentativas.
+- Código com 60 bits (12 símbolos de um alfabeto de 32): adivinhar é inviável, por isso não há limite de tentativas. No modo e-mail essa proteção não existe para jogadores e mestre (veja acima).
 - O banco guarda só o `sha256` do código e do token de sessão (`local_access`, `local_sessions`, migração em `local/migrations/` — fora de `drizzle/`, que é de produção).
 - Cookie `mesa_sessao` com `HttpOnly`, `SameSite=Lax` e, atrás de https (`x-forwarded-proto`), `Secure`.
 - Cabeçalhos de identidade vindos do navegador são sempre descartados; só a plataforma os escreve.
@@ -47,4 +57,4 @@ No modo mesa, ao subir e a cada 24 h, `DATA_DIR/backups/fichas-<data>.json` rece
 
 ## Testes
 
-`scripts/test-platform.mjs` (63 verificações, banco em memória, sem abrir porta): configuração, login, cookie, identidade forjada, convite, origem, troca de código, sessão vencida, revogação, arquivos, modo dev e backup.
+`scripts/test-platform.mjs` (78 verificações, banco em memória, sem abrir porta): configuração, login por código e por e-mail, cookie, identidade forjada, convite, origem, troca de código, sessão vencida, revogação, arquivos, modo dev e backup.

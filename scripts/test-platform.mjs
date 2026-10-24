@@ -1,4 +1,4 @@
-// Plataforma local (local/platform.mjs): login por código, sessão em cookie, identidade repassada ao Worker,
+// Plataforma local (local/platform.mjs): login por código ou só por e-mail, sessão em cookie, identidade repassada ao Worker,
 // arquivos estáticos e backup. Tudo em processo, com banco em memória: nenhuma porta é aberta.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -41,6 +41,9 @@ assert.throws(() => readConfig({}, ['--mesa'], tmp), /MESA_CODIGO_ADMIN/); check
 assert.throws(() => readConfig({ PORT: 'abc', MESA_CODIGO_ADMIN: ADMIN_CODE }, ['--mesa'], tmp), /PORT/); checks++;
 eq(readConfig({ MESA_CODIGO_ADMIN: ADMIN_CODE }, ['--mesa'], tmp).host, '0.0.0.0');
 eq(readConfig({}, [], tmp).host, '127.0.0.1');
+eq(readConfig({ MESA_CODIGO_ADMIN: ADMIN_CODE }, ['--mesa'], tmp).loginMode, 'codigo');
+eq(readConfig({ MESA_CODIGO_ADMIN: ADMIN_CODE, MESA_LOGIN: ' Email ' }, ['--mesa'], tmp).loginMode, 'email');
+assert.throws(() => readConfig({ MESA_CODIGO_ADMIN: ADMIN_CODE, MESA_LOGIN: 'senha' }, ['--mesa'], tmp), /MESA_LOGIN/); checks++;
 ok(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(newCode()), 'formato do código');
 eq(normalizeCode(' abcd-efgh jkmn '), 'ABCDEFGHJKMN');
 
@@ -113,6 +116,30 @@ const admin3 = await login('NOVO-CODI-GO23');
 eq(admin3.status, 200);
 eq((await call('/api/books/livro1/pages/1', { cookie: admin3.cookie })).headers.get('content-type'), 'image/jpeg');
 
+// Entrada só com o e-mail (MESA_LOGIN=email): cadastrado e ativo entra sem código; o administrador segue com o código.
+const loginEmail = async email => { const response = await call('/auth/login', { method: 'POST', body: { email } }); return { ...response, cookie: cookieOf(response) }; };
+eq((await loginEmail('alice@mesa.example')).status, 400); // modo código: e-mail não entra
+platform = make({ adminCode: 'NOVO-CODI-GO23', loginMode: 'email' });
+eq((await call('/api/session', { cookie: admin3.cookie })).json.invitationMode, 'email');
+eq((await call('/api/members', { method: 'POST', cookie: admin3.cookie, body: { email: 'bia@mesa.example', role: 'master' } })).status, 200);
+const bia = await loginEmail(' Bia@Mesa.example ');
+eq(bia.status, 200);
+const biaSession = await call('/api/session', { cookie: bia.cookie });
+eq(biaSession.json.user.email, 'bia@mesa.example');
+eq(biaSession.json.user.role, 'master');
+// O id fica gravado já no primeiro login: o segundo aparelho cai na mesma conta.
+eq((await call('/api/session', { cookie: (await loginEmail('bia@mesa.example')).cookie })).json.user.id, biaSession.json.user.id);
+eq((await loginEmail('ninguem@mesa.example')).status, 401);
+eq((await loginEmail(ADMIN)).status, 401);
+eq((await loginEmail('alice@mesa.example')).status, 403); // revogada
+eq((await login('NOVO-CODI-GO23')).status, 200);
+// Ficha já ligada ao e-mail (membro com o id do dono da ficha): o jogador entra e acha a ficha dele.
+const at = clock.toISOString();
+sqlite.prepare("INSERT INTO table_members (email, user_id, role, active, invited_by, created_at, updated_at) VALUES ('zuque@mesa.example', 'u-zuque', 'player', 1, ?, ?, ?)").run(ADMIN, at, at);
+sqlite.prepare("INSERT INTO characters (id, owner_id, owner_email, name, data, version, created_at, updated_at) VALUES ('mesa-zuque', 'u-zuque', 'zuque@mesa.example', 'Zuque', ?, 1, ?, ?)").run(JSON.stringify({ profile: { name: 'Zuque' } }), at, at);
+const zuque = await loginEmail('zuque@mesa.example');
+eq((await call('/api/characters', { cookie: zuque.cookie })).json.characters.map(item => item.id).join(), 'mesa-zuque');
+
 // Entrada, redirecionamentos e arquivos.
 let response = await call('/signin-with-chatgpt?return_to=' + encodeURIComponent('/sessao.html?character=x'));
 eq(response.status, 302);
@@ -142,4 +169,4 @@ ok(Array.isArray(saved.table_members) && !('local_access' in saved) && !('local_
 ok(!JSON.stringify(saved).includes('code_hash') && !JSON.stringify(saved).includes('token_hash'), 'nenhum hash no backup');
 
 fs.rmSync(tmp, { recursive: true, force: true });
-console.log('PASS', checks, 'checks: configuração, login por código, cookie, identidade forjada, convite, origem, troca de código, sessão vencida, revogação, arquivos, modo dev, backup.');
+console.log('PASS', checks, 'checks: configuração, login por código, login por e-mail, cookie, identidade forjada, convite, origem, troca de código, sessão vencida, revogação, arquivos, modo dev, backup.');

@@ -44,13 +44,23 @@ Regra de ouro: altere `Mesa.data`, chame `Mesa.dirty()`. Nunca faça `PUT` diret
 
 Funções puras usadas pela Sessão e pelo painel do grupo (testes em `scripts/test-ficha-calc.mjs`): `formatModifier`, `mapSequence` (ataques múltiplos), `hpState`, `applyDamage`, `applyHealing`, `applyTemp`, `slotRanks`, `dailyRest`, `spellKind`, `groupSpells`, `displayName` (nomes do catálogo em maiúsculas viram "Bola de Fogo"), `featName`, `totalBulk`, `conditionHasValue`, `toInt`, `normalizeName`, `formatNumber`. Para achar entradas: `GET /api/search?q=&type=&level=&book=&trait=&limit=` (tipos: `spell`, `focus`, `ritual`, `feat`, `class`, `ancestry`, `condition`, `item`).
 
+## Painel do grupo: `GET /api/party`
+
+Qualquer membro ativo. Devolve `{ characters: [...] }` com as fichas dos membros ativos de papel Jogador e, para quem chama, também as próprias (é assim que o mestre recebe as dele, de criaturas e NPCs). Cada item: `{ id, name, owned, version, updatedAt, data }`, mais `ownerEmail` só quando quem chama é mestre e a ficha não é dele. `data` é um recorte da ficha, com os valores sempre em texto:
+
+- `profile`: `name`, `player`, `level`, `className`, `ancestry`;
+- `stats`: `hpMax`, `hpCurrent`, `hpTemp`, `ac`, `perception`, `fort`, `reflex`, `will`, `classDc`;
+- `spellcasting`: só `dc`; `heroPoints`; `conditions`: `[{ name, value }]`.
+
+Nada além disso sai: anotações, inventário, itens, magias e espaços ficam só em `/api/characters/:id`, com as regras de sempre.
+
 ## Servidor da mesa: rotas `/auth/*`
 
-Só existem no servidor da mesa (`server.mjs` em modo mesa). Nele, `GET /api/session` devolve `invitationMode: 'access-code'`, e o `app.js` mostra a geração de links de acesso e o botão Sair.
+Só existem no servidor da mesa (`server.mjs` em modo mesa). Nele, `GET /api/session` devolve `invitationMode: 'access-code'` (ou `'email'` com `MESA_LOGIN=email`), e o `app.js` mostra o botão Sair e a geração de links de acesso (no modo e-mail, o **Link de entrada** `/entrar.html#<e-mail>`, montado na própria tela).
 
 | Rota | Quem | Corpo | Resposta |
 | --- | --- | --- | --- |
-| `POST /auth/login` | qualquer um | `{ code }` | 200 `{ ok: true }` e cookie de sessão; 401 `{ error }` com código errado. |
+| `POST /auth/login` | qualquer um | `{ code }` ou, com `MESA_LOGIN=email`, `{ email }` | 200 `{ ok: true }` e cookie de sessão; 401 `{ error }` com código errado, e-mail fora da mesa ou o e-mail do administrador (que entra só com código); 403 para quem foi revogado; 400 para `{ email }` no modo código. |
 | `POST /auth/logout` | qualquer um | — | 200 `{ ok: true }` e cookie apagado. |
 | `POST /auth/code` | só o administrador (`TABLE_OWNER_EMAIL`) | `{ email }` | 200 `{ email, code, link }`: código novo, que derruba as sessões antigas da pessoa; 403 para quem não é administrador; 404 se o e-mail não for membro ativo; 400 para o próprio administrador (o código dele vem de `MESA_CODIGO_ADMIN`). |
 | `GET /signin-with-chatgpt?return_to=` | qualquer um | — | 302 para `/entrar.html?return_to=…` (o botão Entrar do `app.js` aponta para cá). |

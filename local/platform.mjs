@@ -2,7 +2,8 @@
 // entra e repassa a identidade nos cabeçalhos oai-authenticated-*, que o Worker já sabe ler. As regras de quem vê o
 // quê continuam todas no Worker; aqui só se decide QUEM é a pessoa.
 //   modo "dev":  identidade fixa do administrador, sem login (só em 127.0.0.1);
-//   modo "mesa": login por código de acesso, sessão em cookie.
+//   modo "mesa": login por código de acesso, sessão em cookie. Com MESA_LOGIN=email, jogadores e mestre entram só com
+//                o e-mail cadastrado na mesa; o administrador continua com o código de MESA_CODIGO_ADMIN.
 // Estilo fetch (Request → Response) para os testes chamarem direto, sem abrir porta.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -34,9 +35,11 @@ export function readConfig(env, argv, root) {
   const port = Number(env.PORT || 8787);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT inválida: use um número de 1 a 65535.');
   const adminCode = env.MESA_CODIGO_ADMIN || '';
+  const loginMode = String(env.MESA_LOGIN || 'codigo').trim().toLowerCase();
+  if (!['codigo', 'email'].includes(loginMode)) throw new Error('MESA_LOGIN inválido: use "codigo" (cada pessoa com o seu código) ou "email" (jogadores e mestre entram só com o e-mail).');
   if (mode === 'mesa' && normalizeCode(adminCode).length < 12) throw new Error('Defina MESA_CODIGO_ADMIN (no .env ou nas variáveis da hospedagem) com pelo menos 12 letras ou números. Gere um com: npm run codigo');
   return {
-    mode, host, port, adminCode,
+    mode, host, port, adminCode, loginMode,
     ownerEmail: String(env.TABLE_OWNER_EMAIL || 'mestre@local').trim().toLowerCase(),
     dataDir: path.resolve(root, env.DATA_DIR || 'data'),
     booksDir: path.resolve(root, env.BOOKS_DIR || 'books/rendered'),
@@ -61,7 +64,7 @@ function readCookie(request, name) {
   return '';
 }
 
-export function createPlatform({ worker, sqlite, mode, ownerEmail, adminCode = '', distDir, booksDir, now = () => new Date() }) {
+export function createPlatform({ worker, sqlite, mode, ownerEmail, adminCode = '', loginMode = 'codigo', distDir, booksDir, now = () => new Date() }) {
   const owner = String(ownerEmail || '').trim().toLowerCase();
   const bucket = {
     async get(key) {
@@ -71,7 +74,7 @@ export function createPlatform({ worker, sqlite, mode, ownerEmail, adminCode = '
       return { body: new Response(new Uint8Array(buffer)).body, size: buffer.length };
     },
   };
-  const env = { DB: d1Adapter(sqlite), BUCKET: bucket, TABLE_OWNER_EMAIL: owner, ...(mode === 'mesa' ? { INVITATION_MODE: 'access-code' } : {}) };
+  const env = { DB: d1Adapter(sqlite), BUCKET: bucket, TABLE_OWNER_EMAIL: owner, ...(mode === 'mesa' ? { INVITATION_MODE: loginMode === 'email' ? 'email' : 'access-code' } : {}) };
   const sessionCookie = (value, url, maxAge) => `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${url.protocol === 'https:' ? '; Secure' : ''}`;
 
   function saveAccess(email, userId, code) {
@@ -113,15 +116,37 @@ export function createPlatform({ worker, sqlite, mode, ownerEmail, adminCode = '
     try { const value = JSON.parse(text); return value && typeof value === 'object' ? value : {}; } catch { return {}; }
   }
 
+  function startSession(email, userId, url) {
+    const at = now(), token = crypto.randomBytes(32).toString('base64url');
+    sqlite.prepare('DELETE FROM local_sessions WHERE expires_at <= ?').run(at.toISOString());
+    sqlite.prepare('INSERT INTO local_sessions (token_hash, email, user_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').run(sha256(token), email, userId, at.toISOString(), new Date(at.getTime() + SESSION_DAYS * 86400000).toISOString());
+    return json({ ok: true }, 200, { 'set-cookie': sessionCookie(token, url, SESSION_DAYS * 86400) });
+  }
+
   function login(input, url) {
+    if (input.email !== undefined) return loginMode === 'email' ? loginByEmail(input, url) : fail(400, 'Esta mesa entra com código de acesso. Peça o seu ao administrador.');
     const code = normalizeCode(input.code);
     const access = code.length >= 12 ? sqlite.prepare('SELECT email, user_id FROM local_access WHERE code_hash = ?').get(sha256(code)) : null;
     if (!access) return fail(401, 'Código inválido. Confira com o administrador da mesa.');
     if (access.email !== owner && !sqlite.prepare('SELECT active FROM table_members WHERE email = ?').get(access.email)?.active) return fail(403, 'Seu acesso à mesa foi revogado. Fale com o administrador.');
-    const at = now(), token = crypto.randomBytes(32).toString('base64url');
-    sqlite.prepare('DELETE FROM local_sessions WHERE expires_at <= ?').run(at.toISOString());
-    sqlite.prepare('INSERT INTO local_sessions (token_hash, email, user_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').run(sha256(token), access.email, access.user_id, at.toISOString(), new Date(at.getTime() + SESSION_DAYS * 86400000).toISOString());
-    return json({ ok: true }, 200, { 'set-cookie': sessionCookie(token, url, SESSION_DAYS * 86400) });
+    return startSession(access.email, access.user_id, url);
+  }
+
+  // MESA_LOGIN=email: quem está cadastrado e ativo entra só com o e-mail. Quem souber o e-mail entra como a pessoa, então
+  // é para mesa de amigos. O administrador segue com o código, porque é ele quem convida, troca papéis e revoga.
+  function loginByEmail(input, url) {
+    const email = String(input.email ?? '').trim().toLowerCase();
+    if (email === owner) return fail(401, 'O administrador entra com o código de acesso.');
+    const member = email.length <= 254 ? sqlite.prepare('SELECT user_id, active FROM table_members WHERE email = ?').get(email) : null;
+    if (!member) return fail(401, 'E-mail não cadastrado na mesa. Confira com o administrador.');
+    if (!member.active) return fail(403, 'Seu acesso à mesa foi revogado. Fale com o administrador.');
+    // O id da conta fica gravado já no primeiro login: todos os aparelhos da pessoa caem na mesma conta.
+    let userId = member.user_id;
+    if (!userId) {
+      userId = sqlite.prepare('SELECT user_id FROM local_access WHERE email = ?').get(email)?.user_id || 'u-' + crypto.randomUUID();
+      sqlite.prepare('UPDATE table_members SET user_id = ? WHERE email = ? AND user_id IS NULL').run(userId, email);
+    }
+    return startSession(email, userId, url);
   }
 
   function logout(request, url) {

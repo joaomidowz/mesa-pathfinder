@@ -11,7 +11,7 @@ Este ZIP contém o código da Mesa Pathfinder no commit `3051f0528274e3fff5c0008
 
 O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e JS embutidos. Os testes usam SQLite em memória e identidades sintéticas; não acessam produção.
 
-> **Desde 24/10/2026** o projeto está versionado em git (livros, banco e catálogos fora dele) e roda fora do Sites: `npm run mesa` sobe o servidor da mesa com login por código de acesso (`local/platform.mjs`), pronto para hospedagem fixa (`Dockerfile`, [docs/deploy.md](docs/deploy.md)). Vieram também a página Sessão, o painel do grupo e o catálogo de itens. Comece pelo README e pelos documentos em `docs/`; o contrato entre as páginas está em [docs/modelo-da-ficha.md](docs/modelo-da-ficha.md).
+> **Desde 24/10/2026** o projeto está versionado em git (livros, banco e catálogos fora dele) e roda fora do Sites: `npm run mesa` sobe o servidor da mesa com login por código de acesso ou só pelo e-mail (`MESA_LOGIN=email`, `local/platform.mjs`), pronto para hospedagem fixa (`Dockerfile`, [docs/deploy.md](docs/deploy.md)). Vieram também a página Sessão, o painel do grupo e o catálogo de itens. Comece pelo README e pelos documentos em `docs/`; o contrato entre as páginas está em [docs/modelo-da-ficha.md](docs/modelo-da-ficha.md).
 
 ## Prompt pronto para o Codex
 
@@ -27,10 +27,10 @@ O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e
 | `local/platform.mjs`, `local/migrations/` | Login por código, sessões, identidade repassada ao Worker, arquivos estáticos e backup ([docs/servidor-da-mesa.md](docs/servidor-da-mesa.md)) |
 | `dist/app.js` | Fichas, mestre, jogadores, administração e links de acesso, salvamento automático, backup, atalho Ctrl+K e a ponte `window.Mesa` |
 | `dist/sessao.html` / `.js` / `.css` | Página Sessão: a ficha para jogar ([docs/pagina-sessao.md](docs/pagina-sessao.md)) |
-| `dist/grupo.html` / `.js` / `.css` | Painel do grupo, só do mestre ([docs/painel-do-grupo.md](docs/painel-do-grupo.md)) |
+| `dist/grupo.html` / `.js` / `.css` | Painel do grupo, para todos da mesa (resumo em `GET /api/party`; [docs/painel-do-grupo.md](docs/painel-do-grupo.md)) |
 | `dist/ficha-calc.js` | Contas puras da ficha (PV, ataques múltiplos, espaços de magia, volume) |
 | `dist/regras.js` | Detalhe das regras do catálogo, compartilhado por busca, Sessão e Grupo |
-| `dist/entrar.html` / `.js` | Entrada por código de acesso |
+| `dist/entrar.html` / `.js` | Entrada por e-mail ou por código de acesso |
 | `dist/mesa.html` | Página de personagens e convites |
 | `dist/index.html` | Ficha de um personagem |
 | `dist/progressao.html` | Progressão e talentos |
@@ -42,8 +42,8 @@ O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e
 | `.openai/hosting.json` | Identidade do Site e nomes lógicos dos recursos |
 | `scripts/build-worker.mjs` | Monta o Worker e embute o frontend |
 | `scripts/run-tests.mjs` | `npm test`: monta o Worker e roda todas as suítes `scripts/test-*.mjs` |
-| `scripts/test-worker.mjs` | Worker: isolamento, papéis, migração, conflitos, busca SRD, campos da ficha, limites |
-| `scripts/test-platform.mjs` | Plataforma: login, sessão, identidade forjada, origem, arquivos, backup |
+| `scripts/test-worker.mjs` | Worker: isolamento, papéis, migração, conflitos, busca SRD, campos da ficha, painel do grupo, limites |
+| `scripts/test-platform.mjs` | Plataforma: login por código e por e-mail, sessão, identidade forjada, origem, arquivos, backup |
 | `scripts/test-ficha-calc.mjs`, `scripts/test-items.mjs` | Contas da ficha e catálogo de itens (texto sintético) |
 | `scripts/render-books.py` | Regenera as 791 imagens de páginas a partir dos PDFs incluídos (requer PyMuPDF) |
 | `scripts/render-pages.mjs` | Mesmas imagens usando poppler (`pdftoppm`), sem PyMuPDF |
@@ -92,7 +92,7 @@ Os convites internos cadastram o e-mail e papel, mas o Site privado também exig
 
 As fichas atuais, lista de membros e papéis estão no banco de produção e não constam deste ZIP. Antes de migrar, use **Baixar backup** nas fichas do Site e guarde os JSONs. `worker/owner-defaults.json` é somente o estado-base antigo, não um backup atualizado do banco.
 
-Não exponha uma rota de exportação administrativa sem autenticação. O mestre tem acesso de leitura às fichas, mas jogador não pode obter as de outro jogador.
+Não exponha uma rota de exportação administrativa sem autenticação. O mestre tem acesso de leitura às fichas, mas jogador não pode obter as de outro jogador: só o resumo de jogo do painel do grupo (`/api/party`).
 
 ## Livros e páginas
 

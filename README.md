@@ -1,6 +1,6 @@
 # Mesa Pathfinder
 
-Mesa privada de Pathfinder 2e com autorização no servidor. Jogadores veem e editam seus personagens; mestres consultam todos, sem editar fichas alheias. A conta indicada por `TABLE_OWNER_EMAIL` administra os convites e papéis, independentemente de ser jogadora ou mestre.
+Mesa privada de Pathfinder 2e com autorização no servidor. Jogadores veem e editam seus personagens; mestres consultam todos, sem editar fichas alheias. O painel do grupo mostra a todos o resumo de jogo (PV, defesas, condições) de cada personagem. A conta indicada por `TABLE_OWNER_EMAIL` administra os convites e papéis, independentemente de ser jogadora ou mestre.
 
 ## O que tem
 
@@ -8,11 +8,11 @@ Mesa privada de Pathfinder 2e com autorização no servidor. Jogadores veem e ed
 | --- | --- |
 | `mesa.html` | personagens da conta (o mestre vê todos), convites e papéis; o cartão abre a Sessão |
 | `sessao.html` | **a ficha para jogar**: PV com dano/cura, defesas, condições, golpes com ataques múltiplos, perícias, magias com espaços e foco, talentos e itens com a regra a um toque ([docs/pagina-sessao.md](docs/pagina-sessao.md)) |
-| `grupo.html` | **painel do mestre**: PV, CA, Percepção, salvamentos e condições de todos, atualizando sozinho ([docs/painel-do-grupo.md](docs/painel-do-grupo.md)) |
+| `grupo.html` | **painel do grupo**, para todos: PV, CA, Percepção, salvamentos e condições dos personagens da mesa, atualizando sozinho; o mestre vê também as próprias fichas de criaturas e NPCs ([docs/painel-do-grupo.md](docs/painel-do-grupo.md)) |
 | `index.html`, `progressao.html`, `anotacoes.html` | edição completa da ficha |
 | `busca.html` | busca de regras nos dois livros (atalho Ctrl+K) |
 | `livro.html` | visualizador das páginas dos livros |
-| `entrar.html` | entrada por código de acesso (modo mesa) |
+| `entrar.html` | entrada por e-mail ou por código de acesso (modo mesa) |
 
 ## Rodar
 
@@ -21,7 +21,7 @@ npm run build          # monta dist/server/index.js (Worker com o frontend embut
 npm run render:pages   # gera books/rendered/ (791 JPGs via pdftoppm/poppler)
 npm run parse          # extrai os catálogos dos PDFs (precisa de data/pages.json; npm run extract gera)
 npm run dev            # só você: http://127.0.0.1:8787, entra direto como administrador
-npm run mesa           # a mesa toda, com login por código (precisa de MESA_CODIGO_ADMIN; npm run codigo gera)
+npm run mesa           # a mesa toda, com login por código ou, com MESA_LOGIN=email, só pelo e-mail (precisa de MESA_CODIGO_ADMIN; npm run codigo gera)
 ```
 
 O servidor (`server.mjs` + `local/platform.mjs`) roda o mesmo Worker do build com SQLite local e as imagens em disco, e faz o papel que o ChatGPT Sites fazia: login e arquivos. Variáveis, convites, segurança e backups em [docs/servidor-da-mesa.md](docs/servidor-da-mesa.md); hospedagem fixa em [docs/deploy.md](docs/deploy.md).
@@ -43,7 +43,7 @@ O servidor (`server.mjs` + `local/platform.mjs`) roda o mesmo Worker do build co
 npm test               # monta o Worker e roda todas as suítes scripts/test-*.mjs
 ```
 
-Banco em memória e identidades sintéticas, sem rede nem porta aberta: Worker (isolamento, papéis, migração, conflitos, busca, campos da ficha), plataforma (login, sessão, identidade forjada, origem, arquivos, backup), contas da ficha e catálogo de itens.
+Banco em memória e identidades sintéticas, sem rede nem porta aberta: Worker (isolamento, papéis, migração, conflitos, busca, campos da ficha), plataforma (login por código e por e-mail, sessão, identidade forjada, origem, arquivos, backup), contas da ficha e catálogo de itens.
 
 ## Referências
 
