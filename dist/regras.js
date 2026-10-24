@@ -6,6 +6,9 @@
   const escapeHtml = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   // o servidor marca os termos com \x01/\x02; escapamos o texto e transformamos as marcas em <mark>
   const markify = value => escapeHtml(value).replace(/\x01/g, '<mark>').replace(/\x02/g, '</mark>');
+  // O texto extraído traz as quebras de linha das colunas do PDF: junta a linha quando a seguinte continua a frase
+  // (começa em minúscula, número, parêntese ou travessão). "Sucesso crítico", "Falha" etc. seguem em linha própria.
+  const reflow = text => String(text ?? '').replace(/\n(?=[a-zà-ÿ0-9(–—-])/g, ' ');
 
   function metaLine(entry) {
     const parts = [TYPE_LABELS[entry.type] || entry.type];
@@ -32,13 +35,13 @@
         fieldRow('Tempo de execução', d.time) + fieldRow('Distância', d.range) + fieldRow('Alvos', d.targets) +
         fieldRow('Área', d.area) + fieldRow('Defesa', d.defense) + fieldRow('Duração', d.duration) + fieldRow('Custo', d.cost) +
         fieldRow('Requerimentos', d.requirements) + fieldRow('Teste primário', d.primaryCheck) + fieldRow('Testes secundários', d.secondaryChecks) +
-        (d.text ? `<p class="detail-text">${escapeHtml(d.text)}</p>` : '') +
-        (d.heightened?.length ? `<h4>Elevações</h4>` + d.heightened.map(h => `<p class="detail-text"><strong>(+${h.plus})</strong> ${escapeHtml(h.text)}</p>`).join('') : '');
+        (d.text ? `<p class="detail-text">${escapeHtml(reflow(d.text))}</p>` : '') +
+        (d.heightened?.length ? `<h4>Elevações</h4>` + d.heightened.map(h => `<p class="detail-text"><strong>(+${h.plus})</strong> ${escapeHtml(reflow(h.text))}</p>`).join('') : '');
     }
     if (entry.type === 'feat') {
       return fieldRow('Categoria', d.category || entry.category) + fieldRow('Pré-requisitos', d.prerequisites) +
         fieldRow(d.actions === 'reaction' || d.actions === 'free-action' ? 'Acionamento' : 'Gatilho', d.trigger) +
-        (d.text ? `<p class="detail-text">${escapeHtml(d.text)}</p>` : '');
+        (d.text ? `<p class="detail-text">${escapeHtml(reflow(d.text))}</p>` : '');
     }
     if (entry.type === 'class') {
       return fieldRow('PV por nível', d.hpPerLevel) + fieldRow('Atributo-chave', d.keyAttribute) +
@@ -50,9 +53,9 @@
       return fieldRow('Pontos de vida', d.hp) + fieldRow('Tamanho', d.size) + fieldRow('Velocidade', d.speed) +
         fieldRow('Melhorias de atributo', (d.boosts || []).join(', ')) + fieldRow('Defeitos de atributo', (d.flaws || []).join(', ')) +
         fieldRow('Idiomas', d.languages) + fieldRow('Traços', (d.traits || []).join(', ')) +
-        (d.heritages?.length ? `<h4>Heranças</h4>` + d.heritages.map(h => `<p class="detail-text"><strong>${escapeHtml(h.name)}</strong> ${escapeHtml(h.text)}</p>`).join('') : '');
+        (d.heritages?.length ? `<h4>Heranças</h4>` + d.heritages.map(h => `<p class="detail-text"><strong>${escapeHtml(h.name)}</strong> ${escapeHtml(reflow(h.text))}</p>`).join('') : '');
     }
-    return d.text ? `<p class="detail-text">${escapeHtml(d.text)}</p>` : '';
+    return d.text ? `<p class="detail-text">${escapeHtml(reflow(d.text))}</p>` : '';
   }
 
   // Detalhe completo: cabeçalho com "Ver no livro" (mais os botões de `actions`), traços e corpo.
@@ -61,5 +64,5 @@
   ${(entry.traits || []).length ? `<div class="chips">${entry.traits.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('')}</div>` : ''}${bodyHtml(entry)}`;
   }
 
-  window.Regras = { TYPE_LABELS, BOOK_NAMES, escapeHtml, markify, metaLine, bookLink, bodyHtml, detailHtml };
+  window.Regras = { TYPE_LABELS, BOOK_NAMES, escapeHtml, markify, reflow, metaLine, bookLink, bodyHtml, detailHtml };
 })();

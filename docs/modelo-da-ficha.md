@@ -11,7 +11,7 @@ A ficha continua sendo um JSON livre validado por `validateData` (`worker/index.
 | `heroPoints` | texto | Pontos de heroísmo atuais (`'0'` a `'3'`). |
 | `conditions` | lista de objetos | Condições ativas: `{ id, name, value }`. `id` é o da entrada do catálogo (`condition-assustado-livro1`) ou `''`; `value` é o valor numérico da condição (`'2'` em Assustado 2) ou `''` quando ela não tem valor. |
 | `spellcasting` | objeto | `{ tradition, kind, attack, dc, slots, focus }`. `tradition`: `arcana`, `divina`, `ocultista`, `primal` ou texto livre. `kind`: `preparado`, `espontâneo` ou `''`. `slots`: `{ '1': { max: '3', used: '1' }, … '10': … }` por nível de magia (ranque). `focus`: `{ max, current }`. |
-| `spells` | lista de objetos | `{ id, name, rank, notes }`. `id` da entrada do catálogo (`spell-…`, `focus-…`, `ritual-…`) ou `''` para magia digitada à mão; `rank` é o nível em que está preparada/conhecida. |
+| `spells` | lista de objetos | `{ id, name, rank, kind, notes }`. `id` da entrada do catálogo (`spell-…`, `focus-…`, `ritual-…`) ou `''` para magia digitada à mão; `rank` é o ranque em que está preparada/conhecida; `kind` é `truque`, `magia`, `foco` ou `ritual` (do catálogo; ausente em fichas antigas, a página Sessão completa). |
 | `items` | lista de objetos | `{ id, name, qty, bulk, invested, notes }`. `id` da entrada `item-…` do catálogo ou `''`; `invested` é booleano. O inventário em texto livre (`inventory.*`) continua existindo e é mostrado à parte. |
 
 O servidor só confere a forma: `spellcasting` tem que ser objeto e `spells`, `items` e `conditions` têm que ser listas de objetos (HTTP 400 se não forem). O resto é responsabilidade das páginas.
@@ -38,7 +38,11 @@ Regra de ouro: altere `Mesa.data`, chame `Mesa.dirty()`. Nunca faça `PUT` diret
 - `detailHtml(entrada, { actions })`: cabeçalho com "Ver no livro", traços e corpo; `actions` acrescenta botões;
 - `bookLink(entrada)`.
 
-`entrada` é a resposta de `GET /api/entries/:id`. Para achar entradas: `GET /api/search?q=&type=&level=&book=&trait=&limit=` (tipos: `spell`, `focus`, `ritual`, `feat`, `class`, `ancestry`, `condition`, `item`).
+`reflow(texto)` junta as quebras de linha que vieram das colunas do PDF. `entrada` é a resposta de `GET /api/entries/:id`.
+
+## Contas da ficha: `window.FichaCalc` (`dist/ficha-calc.js`)
+
+Funções puras usadas pela Sessão e pelo painel do grupo (testes em `scripts/test-ficha-calc.mjs`): `formatModifier`, `mapSequence` (ataques múltiplos), `hpState`, `applyDamage`, `applyHealing`, `applyTemp`, `slotRanks`, `dailyRest`, `spellKind`, `groupSpells`, `displayName` (nomes do catálogo em maiúsculas viram "Bola de Fogo"), `featName`, `totalBulk`, `conditionHasValue`, `toInt`, `normalizeName`, `formatNumber`. Para achar entradas: `GET /api/search?q=&type=&level=&book=&trait=&limit=` (tipos: `spell`, `focus`, `ritual`, `feat`, `class`, `ancestry`, `condition`, `item`).
 
 ## Servidor da mesa: rotas `/auth/*`
 

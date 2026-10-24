@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sessão · Mesa Pathfinder</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="sessao.css"></head>
+<body><header class="topbar"><div class="shell topbar-inner"><a class="brand" href="mesa.html"><span class="brand-mark"><span>ᚠ</span></span><span><span class="brand-title">Mesa Pathfinder</span><br><span class="brand-sub">ficha de sessão</span></span></a><nav><a href="mesa.html">Mesa</a></nav></div></header>
+<main class="shell session" data-session>
+<section class="hero session-hero"><div><div class="eyebrow">Sessão de jogo</div><h1 data-name>Carregando…</h1><p class="lead" data-subtitle></p><p class="small muted" data-player></p><span class="chip" data-readonly-chip hidden>Visão do mestre · somente leitura</span><p class="cloud-status" data-cloud-status>Carregando sua ficha com segurança…</p></div><div class="hero-actions"><button class="btn" data-save data-mutate>Salvar agora</button></div></section>
+<div class="session-grid">
+<div class="session-col">
+<section class="panel" data-vitals></section>
+<section class="panel" data-conditions></section>
+<section class="panel" data-attributes></section>
+<section class="panel" data-strikes></section>
+<section class="panel" data-skill-list></section>
+</div>
+<div class="session-col">
+<section class="panel" data-spells><div data-spell-summary></div><div data-spell-edit hidden></div></section>
+<section class="panel" data-feat-list></section>
+<section class="panel" data-item-list></section>
+</div>
+</div>
+</main>
+<dialog id="help-modal"><h2 data-help-title></h2><p data-help-body></p><form method="dialog"><button class="btn primary">Fechar</button></form></dialog>
+<dialog id="rule-dialog" class="rule-dialog" aria-label="Regra"></dialog>
+<dialog id="picker-dialog" class="picker-dialog" aria-label="Adicionar do catálogo"></dialog>
+<footer class="shell footer"><span>Salvamento automático · backup por personagem</span><span>Toque em qualquer magia, talento, item ou condição para ler a regra</span></footer>
+<script src="app.js"></script><script src="regras.js"></script><script src="ficha-calc.js"></script><script src="sessao.js"></script></body></html>
