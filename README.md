@@ -6,10 +6,10 @@ Mesa privada de Pathfinder 2e com autorização no servidor. Jogadores veem e ed
 
 | Página | Para quê |
 | --- | --- |
-| `mesa.html` | personagens da conta (o mestre vê todos), convites e papéis; o cartão abre a Sessão |
-| `sessao.html` | **a ficha para jogar**: PV com dano/cura, defesas, condições, golpes com ataques múltiplos, perícias, magias com espaços e foco, talentos e itens com a regra a um toque ([docs/pagina-sessao.md](docs/pagina-sessao.md)) |
+| `mesa.html` | personagens da conta (o mestre vê todos), convites e papéis; o cartão abre a ficha |
+| `sessao.html` | **a ficha do personagem**, com topo fixo e três abas: **Ficha** (tudo editável: XP, identidade, atributos, defesa com a conta da CA, perícias, escolhas de talentos filtradas pelos livros, magias, inventário em tabela com Volume, riqueza em moedas, anotações), **Combate** (PV, temporários, CA com escudo, Morrendo em caveiras, Ferido, Heroísmo, Sorte, condições, golpes com ataques múltiplos, magias em uso) e **Pesquisa** ([docs/pagina-sessao.md](docs/pagina-sessao.md)) |
 | `grupo.html` | **painel do grupo**, para todos: PV, CA, Percepção, salvamentos e condições dos personagens da mesa, atualizando sozinho; o mestre vê também as próprias fichas de criaturas e NPCs ([docs/painel-do-grupo.md](docs/painel-do-grupo.md)) |
-| `index.html`, `progressao.html`, `anotacoes.html` | edição completa da ficha |
+| `index.html`, `progressao.html`, `anotacoes.html` | redirecionam para a aba Ficha (links antigos) |
 | `busca.html` | busca de regras nos dois livros (atalho Ctrl+K) |
 | `livro.html` | visualizador das páginas dos livros |
 | `entrar.html` | entrada por e-mail ou por código de acesso (modo mesa) |
@@ -33,7 +33,7 @@ O servidor (`server.mjs` + `local/platform.mjs`) roda o mesmo Worker do build co
 ## Dados
 
 - `characters` tem IDs independentes, dono e versão. Atualizações concorrentes recebem HTTP 409; o navegador preserva o rascunho separado por conta e personagem.
-- A ficha é um JSON validado pelo Worker; os campos da página Sessão (magias, itens, condições, conjuração, heroísmo) são aditivos ([docs/modelo-da-ficha.md](docs/modelo-da-ficha.md)).
+- A ficha é um JSON validado pelo Worker; os campos da página do personagem (magias, itens, escolhas, defesa, moedas, condições, conjuração, heroísmo, sorte) são aditivos, e as fichas antigas são convertidas no navegador quando o dono as abre, sem apagar nada ([docs/modelo-da-ficha.md](docs/modelo-da-ficha.md)).
 - A tabela antiga `character_sheets` é preservada; a primeira sessão migra a ficha sem apagá-la (`legacy_migrations` impede duplicação). Não alterar migrações aplicadas: `drizzle/` é de produção; as tabelas só do servidor local ficam em `local/migrations/`.
 - Livros (`books/`), banco e catálogos extraídos (`data/*.db`, `data/*.json`) são material licenciado ou derivado dele: ficam fora do git e só são servidos a membros ativos.
 

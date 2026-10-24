@@ -1,6 +1,6 @@
 # Modelo da ficha e contratos entre as páginas
 
-Contrato comum da página Sessão, do painel do grupo, do catálogo de itens e do servidor da mesa. Mudou aqui, muda em todos.
+Contrato comum da página do personagem (`sessao.html`, abas Ficha, Combate e Pesquisa), do painel do grupo, do catálogo de itens e do servidor da mesa. Mudou aqui, muda em todos.
 
 ## Campos da ficha
 
@@ -8,13 +8,39 @@ A ficha continua sendo um JSON livre validado por `validateData` (`worker/index.
 
 | Campo | Tipo | Conteúdo |
 | --- | --- | --- |
+| `profile.level` | texto | Nível de 1 a 20. Na página, só muda pelos botões − e + do topo (não sobe sozinho pelo XP). |
+| `profile.xp` | texto | XP atual; as somas aceitam milhar com ponto (`'1.750'` vale 1750). |
 | `heroPoints` | texto | Pontos de heroísmo atuais (`'0'` a `'3'`). |
-| `conditions` | lista de objetos | Condições ativas: `{ id, name, value }`. `id` é o da entrada do catálogo (`condition-assustado-livro1`) ou `''`; `value` é o valor numérico da condição (`'2'` em Assustado 2) ou `''` quando ela não tem valor. |
+| `luck` | texto | Sorte, de `'0'` sem máximo. |
+| `conditions` | lista de objetos | Condições ativas: `{ id, name, value }`. `id` é o da entrada do catálogo (`condition-assustado-livro1`) ou `''`; `value` é o valor numérico da condição (`'2'` em Assustado 2) ou `''` quando ela não tem valor. Morrendo, Ferido, Condenado e Inconsciente usam `condition-morrendo-livro1`, `condition-ferido-livro1`, `condition-condenado-livro1` e `condition-inconsciente-livro1` (Inconsciente sem valor); o Combate cuida delas pela regra do livro. |
+| `defense` | objeto | `{ ac: { category, dexCap, item }, armorProf: { unarmored, light, medium, heavy }, shield: { bonus, hardness, hpMax, bt, hp, cover, raised }, acBonus }`. `category` é a armadura usada (`unarmored`, `light`, `medium`, `heavy`); `armorProf` guarda a proficiência em cada uma (`U`, `T`, `E`, `M`, `L`; `''` = não definida); `dexCap` vazio é sem limite; `bt` é o limiar de quebra (LQ); `cover` é o bônus ao Buscar Cobertura do escudo de corpo; `raised` é booleano; `acBonus` é a CA adicional (pode ser negativa). A CA da ficha continua em `stats.ac`: a conta do livro só a troca pelo botão Usar. |
+| `inventory.coins` | objeto | `{ pl, po, pp, pc }`, em texto. 1 PL = 10 PO = 100 PP = 1.000 PC; 1.000 moedas contam 1 de Volume. |
+| `choices` | lista de objetos | Escolhas de talento: `{ id, name, slot, level, manual, note }`. `slot` ∈ `classe`, `ancestralidade`, `pericia`, `geral`, `arquetipo`, `biografia`; `id` da entrada `feat-…` ou `''`; `manual: true` marca "fora dos livros" (anotada à mão); `note` guarda o texto original de uma escolha convertida. |
+| `sheetVersion` | texto | `'2'` depois da conversão das fichas antigas (abaixo). Personagem novo já nasce com `'2'`. Fica fora do `DEFAULTS`. |
 | `spellcasting` | objeto | `{ tradition, kind, attack, dc, slots, focus }`. `tradition`: `arcana`, `divina`, `ocultista`, `primal` ou texto livre. `kind`: `preparado`, `espontâneo` ou `''`. `slots`: `{ '1': { max: '3', used: '1' }, … '10': … }` por nível de magia (ranque). `focus`: `{ max, current }`. |
 | `spells` | lista de objetos | `{ id, name, rank, kind, notes }`. `id` da entrada do catálogo (`spell-…`, `focus-…`, `ritual-…`) ou `''` para magia digitada à mão; `rank` é o ranque em que está preparada/conhecida; `kind` é `truque`, `magia`, `foco` ou `ritual` (do catálogo; ausente em fichas antigas, a página Sessão completa). |
-| `items` | lista de objetos | `{ id, name, qty, bulk, invested, notes }`. `id` da entrada `item-…` do catálogo ou `''`; `invested` é booleano. O inventário em texto livre (`inventory.*`) continua existindo e é mostrado à parte. |
+| `items` | lista de objetos | `{ id, name, qty, bulk, invested, notes, section }`. `id` da entrada `item-…` do catálogo ou `''`; `invested` é booleano; `section` ∈ `carregavel`, `consumivel`, `equipado` (sem ela, Carregável). `bulk` é o Volume **por unidade**: `'0'`, `'L'` ou um número; `''` aparece como "?" e entra no aviso de itens sem Volume (antes de 24/10/2026 contava 0). O Volume total segue o livro: 10 itens L contam 1, a fração cai; sobrecarregado acima de 5 + Força e máximo 10 + Força. |
 
-O servidor só confere a forma: `spellcasting` tem que ser objeto e `spells`, `items` e `conditions` têm que ser listas de objetos (HTTP 400 se não forem). O resto é responsabilidade das páginas.
+O servidor só confere a forma: `spellcasting` e `defense` têm que ser objetos e `spells`, `items`, `choices` e `conditions` têm que ser listas de objetos (HTTP 400 se não forem). O resto é responsabilidade das páginas.
+
+### Conversão das fichas antigas (`sheetVersion: '2'`)
+
+Fichas de antes da página única guardavam o inventário em texto livre (`inventory.carried`, `consumables`, `equipped`, `wealth`) e os talentos em `feats.*`. A página converte na primeira abertura, no navegador, e o salvamento automático grava (as fichas de verdade estão no volume da hospedagem). Na visão do mestre a conversão vale só na tela; com um conflito de versão aberto, nada é salvo por cima.
+
+- **Inventário** (`FichaCalc.migrateInventory`):
+  - cada linha das três caixas vira uma linha da tabela, na aba correspondente;
+  - "×N" ou um número no começo ("19 virotes") é a quantidade, e o último parêntese é o Volume;
+  - "— investido" liga o investido, e o texto depois de " — " vai para as notas;
+  - com quantidade maior que 1, só `0` e "nL" com n igual à quantidade viram Volume por unidade; o resto fica "?" com a nota "Volume anotado: …";
+  - `(*)` e `(**)` definem recipientes, e quem tem o asterisco ganha a nota "na Mochila".
+- **Itens que já existiam em `items`:** casam com as linhas pelo nome (primeiro idêntico, depois por palavras, só quando o par é único) e mantêm `id`, Volume, investido e quantidade.
+- **Riqueza:** linhas "PL/PO/PP/PC: número" viram `inventory.coins`; linhas sem número ("PP: confirmar") e as de "Volume…" ficam só no texto; as demais viram itens em Carregável.
+- **Escolhas** (`FichaCalc.choicesFromFeats`):
+  - `ancestryTalent` → ancestralidade 1, `background` → biografia 1, `class1` → classe 1, `class2` → classe 2, `skill2` → perícia 2, `archetype` → arquétipo 2;
+  - depois a página busca o `id` só nas categorias da vaga (`FichaCalc.pickFeat`), porque o mesmo nome existe em classes diferentes;
+  - sem acerto, ou citando livro que não é o 1 nem o 2, a escolha fica `manual` com o texto original em `note`;
+  - `feats.ancestry` continua como texto (características, não talento).
+- **Nada é apagado:** o texto antigo aparece recolhido no fim do Inventário, com o botão "Apagar texto antigo", e os outros `feats.*` e `extra.level*` ficam guardados.
 
 ## Ponte com o `app.js`: `window.Mesa` e o evento `mesa:ficha`
 
@@ -23,11 +49,15 @@ Páginas de personagem (`?character=<id>`) carregam `app.js` **antes** do própr
 `window.Mesa` expõe:
 
 - `session`, `character` (com `readOnly` e `version`), `data` (a ficha viva — altere este objeto) e `books`;
+- `conflict`: verdadeiro quando há conflito de versão aberto (nesse caso, nada de salvar automaticamente por cima);
 - `api(path, method, payload)` para `/api/*`;
 - `dirty()`: marca alteração e agenda o salvamento automático (respeita `readOnly`);
 - `saveData()`: salva já;
-- `bindAll(root)`: liga `data-bind` dentro de `root` e desabilita tudo se a ficha for só leitura;
+- `bindAll(root)`: liga `data-bind` dentro de `root` (caixas de marcar usam `checked`) e, se a ficha for só leitura, desabilita os campos, menos os marcados com `data-free` (como a Pesquisa);
+- `updateCalculations()`: refaz as contas fixas da página (Fúria do bárbaro) depois de mudar nível ou atributos por botão;
 - `readOnly()`, `escapeAttr(texto)`, `openHelp(título, texto)` e `skillInfo` (nomes e explicações das perícias).
+
+Em conflito, o rascunho local guarda a versão em que as edições se basearam, para o conflito continuar aparecendo ao recarregar.
 
 Regra de ouro: altere `Mesa.data`, chame `Mesa.dirty()`. Nunca faça `PUT` direto — o `app.js` é o dono da versão da ficha.
 
@@ -42,7 +72,15 @@ Regra de ouro: altere `Mesa.data`, chame `Mesa.dirty()`. Nunca faça `PUT` diret
 
 ## Contas da ficha: `window.FichaCalc` (`dist/ficha-calc.js`)
 
-Funções puras usadas pela Sessão e pelo painel do grupo (testes em `scripts/test-ficha-calc.mjs`): `formatModifier`, `mapSequence` (ataques múltiplos), `hpState`, `applyDamage`, `applyHealing`, `applyTemp`, `slotRanks`, `dailyRest`, `spellKind`, `groupSpells`, `displayName` (nomes do catálogo em maiúsculas viram "Bola de Fogo"), `featName`, `totalBulk`, `conditionHasValue`, `toInt`, `normalizeName`, `formatNumber`. Para achar entradas: `GET /api/search?q=&type=&level=&book=&trait=&limit=` (tipos: `spell`, `focus`, `ritual`, `feat`, `class`, `ancestry`, `condition`, `item`).
+Funções puras usadas pela página do personagem e pelo painel do grupo (testes em `scripts/test-ficha-calc.mjs`):
+
+- **Números e textos:** `toInt`, `toCount` (inteiro que entende milhar com ponto: `'1.750'` → 1750), `stepValue` (botões [−][+] com mínimo e máximo), `levelStep` (1 a 20), `formatModifier`, `formatNumber`, `normalizeName`, `displayName` (nomes do catálogo em maiúsculas viram "Bola de Fogo"), `featName`.
+- **PV e condições:** `hpState`, `applyDamage`, `applyHealing`, `applyTemp`, `conditionHasValue`, `dyingState` (Morrendo, Ferido, Condenado, Inconsciente, limite de morte), `setConditionValue`, `setDying` (perder Morrendo dá Ferido +1), `afterDamage` e `afterHealing` (a regra do livro ao cair e ao ser curado).
+- **Defesa:** `profBonus`, `acFormula` (a conta do livro, só conferência), `shieldState` (erguido, quebrado, destruído), `effectiveAc` (CA total com escudo e CA adicional), `armorFromEntry` e `shieldFromEntry` (números do catálogo; `null` quando a entrada não tem).
+- **Golpes e magias:** `mapSequence` (ataques múltiplos), `slotRanks`, `dailyRest`, `spellKind`, `groupSpells`.
+- **Inventário:** `normalizeBulk`, `bulkSummary` (Volume do livro, limites pela Força e itens "?"), `coinsTotal`, `parseInventoryLine` e `migrateInventory` (conversão do texto antigo, pura e idempotente).
+- **Escolhas:** `choicesFromFeats`, `VERSATILE_HERITAGES`, `matchCatalogName`, `choiceQuery` (vaga → categorias e nível máximo), `pickFeat`.
+- **Painel do grupo:** `sortSheets`. Para achar entradas: `GET /api/search?q=&type=&level=&maxLevel=&category=&book=&trait=&limit=` (tipos: `spell`, `focus`, `ritual`, `feat`, `class`, `ancestry`, `condition`, `item`). `level` é exato e `maxLevel` é "até este nível"; `category` pode vir até 3 vezes, valendo qualquer uma (é assim que a vaga de ancestralidade junta `ancestralidade: Humano` e `herança versátil: Cambiante`); `limit` vai até 200.
 
 ## Painel do grupo: `GET /api/party`
 

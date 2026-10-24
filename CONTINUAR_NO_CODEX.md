@@ -26,15 +26,13 @@ O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e
 | `server.mjs` | Servidor: adaptador node:http da plataforma; `npm run dev` (só você, 127.0.0.1) ou `npm run mesa` (login por código) |
 | `local/platform.mjs`, `local/migrations/` | Login por código, sessões, identidade repassada ao Worker, arquivos estáticos e backup ([docs/servidor-da-mesa.md](docs/servidor-da-mesa.md)) |
 | `dist/app.js` | Fichas, mestre, jogadores, administração e links de acesso, salvamento automático, backup, atalho Ctrl+K e a ponte `window.Mesa` |
-| `dist/sessao.html` / `.js` / `.css` | Página Sessão: a ficha para jogar ([docs/pagina-sessao.md](docs/pagina-sessao.md)) |
+| `dist/sessao.html` / `.js` / `.css` | Página do personagem: topo fixo e abas Ficha, Combate e Pesquisa ([docs/pagina-sessao.md](docs/pagina-sessao.md)) |
 | `dist/grupo.html` / `.js` / `.css` | Painel do grupo, para todos da mesa (resumo em `GET /api/party`; [docs/painel-do-grupo.md](docs/painel-do-grupo.md)) |
-| `dist/ficha-calc.js` | Contas puras da ficha (PV, ataques múltiplos, espaços de magia, volume) |
-| `dist/regras.js` | Detalhe das regras do catálogo, compartilhado por busca, Sessão e Grupo |
+| `dist/ficha-calc.js` | Contas puras da ficha (PV, Morrendo e Ferido, CA e escudo, ataques múltiplos, espaços de magia, Volume e moedas, conversão do inventário antigo, filtro das escolhas) |
+| `dist/regras.js` | Detalhe das regras do catálogo, compartilhado por busca, página do personagem e Grupo |
 | `dist/entrar.html` / `.js` | Entrada por e-mail ou por código de acesso |
 | `dist/mesa.html` | Página de personagens e convites |
-| `dist/index.html` | Ficha de um personagem |
-| `dist/progressao.html` | Progressão e talentos |
-| `dist/anotacoes.html` | Inventário e notas |
+| `dist/index.html`, `dist/progressao.html`, `dist/anotacoes.html` | Só redirecionam para a aba Ficha de `sessao.html` (links antigos) |
 | `dist/livro.html` / `dist/livro.js` | Visualizador das páginas |
 | `dist/busca.html` / `dist/busca.js` | Busca SRD: catálogos extraídos dos livros com filtros e detalhes |
 | `dist/styles.css` | Tema e layout para celular |
