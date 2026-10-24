@@ -11,7 +11,7 @@ Este ZIP contém o código da Mesa Pathfinder no commit `3051f0528274e3fff5c0008
 
 O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e JS embutidos. Os testes usam SQLite em memória e identidades sintéticas; não acessam produção.
 
-> **Desde 24/10/2026** o projeto está versionado em git (livros, banco e catálogos fora dele) e roda fora do Sites: `npm run mesa` sobe o servidor da mesa com login por código de acesso ou só pelo e-mail (`MESA_LOGIN=email`, `local/platform.mjs`), pronto para hospedagem fixa (`Dockerfile`, [docs/deploy.md](docs/deploy.md)). Vieram também a página Sessão, o painel do grupo e o catálogo de itens. Comece pelo README e pelos documentos em `docs/`; o contrato entre as páginas está em [docs/modelo-da-ficha.md](docs/modelo-da-ficha.md).
+> **Desde 24/10/2026** o projeto está versionado em git (livros, banco e catálogos fora dele) e roda fora do Sites: `npm run mesa` sobe o servidor da mesa com login por código de acesso ou só pelo e-mail (`MESA_LOGIN=email`, `local/platform.mjs`), publicado no Railway com volume persistente (`Dockerfile`, [docs/deploy.md](docs/deploy.md)); as fichas de verdade vivem no volume, não no `data/local.db` da máquina. Vieram também a página Sessão, o painel do grupo e o catálogo de itens. Comece pelo README e pelos documentos em `docs/`; o contrato entre as páginas está em [docs/modelo-da-ficha.md](docs/modelo-da-ficha.md).
 
 ## Prompt pronto para o Codex
 

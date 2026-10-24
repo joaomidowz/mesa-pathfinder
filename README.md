@@ -24,7 +24,7 @@ npm run dev            # só você: http://127.0.0.1:8787, entra direto como adm
 npm run mesa           # a mesa toda, com login por código ou, com MESA_LOGIN=email, só pelo e-mail (precisa de MESA_CODIGO_ADMIN; npm run codigo gera)
 ```
 
-O servidor (`server.mjs` + `local/platform.mjs`) roda o mesmo Worker do build com SQLite local e as imagens em disco, e faz o papel que o ChatGPT Sites fazia: login e arquivos. Variáveis, convites, segurança e backups em [docs/servidor-da-mesa.md](docs/servidor-da-mesa.md); hospedagem fixa em [docs/deploy.md](docs/deploy.md).
+O servidor (`server.mjs` + `local/platform.mjs`) roda o mesmo Worker do build com SQLite local e as imagens em disco, e faz o papel que o ChatGPT Sites fazia: login e arquivos. Variáveis, convites, segurança e backups em [docs/servidor-da-mesa.md](docs/servidor-da-mesa.md); a mesa no ar (Railway) em [docs/deploy.md](docs/deploy.md).
 
 ## Busca de regras
 
