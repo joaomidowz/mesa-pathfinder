@@ -67,9 +67,31 @@ const sheet={profile:{name:'Bob'},heroPoints:'1',conditions:[{id:'condition-assu
 status(await req('bob','characters/'+bob.id,'PUT',{data:sheet,version:1}),200);
 assert.deepEqual(status(await req('bob','characters/'+bob.id),200).data,sheet);checks++;
 for(const broken of [{spells:{}},{items:['corda']},{conditions:'Assustado'},{spellcasting:[]}])status(await req('bob','characters/'+bob.id,'PUT',{data:{...sheet,...broken},version:2}),400);
+// Ficha v2: sorte, escolhas de talento, defesa e moedas voltam iguais; escolhas e defesa malformadas são recusadas.
+const sheetV2={...sheet,luck:'3',sheetVersion:'2',choices:[{id:'',name:'Golpe de Teste',slot:'classe',level:'1',manual:true,note:'Golpe de Teste (livro A)'}],defense:{ac:{category:'light',dexCap:'+3',item:'2'},armorProf:{unarmored:'T',light:'T',medium:'U',heavy:'U'},shield:{bonus:'2',hardness:'3',hpMax:'12',bt:'6',hp:'12',raised:true},acBonus:'-1'},inventory:{carried:'Corda (L)',coins:{pl:'0',po:'4',pp:'25',pc:'137'}},items:[{...sheet.items[0],section:'carregavel'}]};
+status(await req('bob','characters/'+bob.id,'PUT',{data:sheetV2,version:2}),200);
+assert.deepEqual(status(await req('bob','characters/'+bob.id),200).data,sheetV2);checks++;
+for(const broken of [{choices:{}},{choices:['talento']},{defense:[]},{defense:'x'}])status(await req('bob','characters/'+bob.id,'PUT',{data:{...sheetV2,...broken},version:3}),400);
 // Itens entram na busca como tipo próprio.
 sqlite.prepare("INSERT INTO srd_entries (id,type,name,norm,level,category,traits,book,page,data) VALUES (?,?,?,?,?,?,?,?,?,?)").run('item-cordadeseda-livro2-1','item','CORDA DE SEDA','cordadeseda',1,'equipamento','','livro2',300,JSON.stringify({name:'CORDA DE SEDA',type:'item',text:'Uma corda leve.'}));
 assert.equal(status(await req('bob','search?type=item'),200).entries[0].id,'item-cordadeseda-livro2-1');checks++;
+// Vagas de talento: nível máximo, categorias repetidas (até 3, com OU) e teto de 200 por busca. Catálogo sintético.
+const addFeat=sqlite.prepare("INSERT INTO srd_entries (id,type,name,norm,level,category,category_norm,traits,book,page,data) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+for(let i=0;i<210;i++){const level=i%4+1;addFeat.run('feat-talentotesteiro'+i+'-livro1-'+level,'feat','TALENTO TESTEIRO '+i,'talentotesteiro'+i,level,'classe: Testeiro','classetesteiro','','livro1',1,JSON.stringify({name:'TALENTO TESTEIRO '+i,type:'feat',level,text:'Texto sintético testeirada '+i+'.'}));}
+for(const level of [1,3])addFeat.run('feat-provador'+level+'-livro1-'+level,'feat','PROVADOR '+level,'provador'+level,level,'classe: Provador','classeprovador','','livro1',2,JSON.stringify({name:'PROVADOR '+level,type:'feat',level,text:'Outro texto sintético.'}));
+sqlite.prepare("INSERT INTO srd_fts (rowid, name, text) SELECT rowid, name, json_extract(data, '$.text') FROM srd_entries WHERE category IN ('classe: Testeiro', 'classe: Provador')").run();
+const upTo2=status(await req('bob','search?type=feat&category=classe:+Testeiro&maxLevel=2&limit=200'),200).entries;
+assert.equal(upTo2.length,106);assert.ok(upTo2.every(item=>item.level<=2));checks++;
+assert.equal(status(await req('bob','search?type=feat&category=classe:+Testeiro&limit=500'),200).entries.length,200);checks++;
+assert.equal(status(await req('bob','search?type=feat&category=classe:+Testeiro'),200).entries.length,25);checks++;
+for(const bad of ['abc','123','-1','2.5'])status(await req('bob','search?type=feat&maxLevel='+bad),400);
+const union=status(await req('bob','search?type=feat&category=classe:+Provador&category=classe:+Testeiro&maxLevel=1&limit=200'),200).entries;
+assert.equal(union.length,54);assert.ok(union.some(item=>item.id==='feat-provador1-livro1-1')&&union.every(item=>item.level===1));checks++;
+assert.deepEqual(status(await req('bob','search?type=feat&category=classe:+Provador'),200).entries.map(item=>item.id),['feat-provador1-livro1-1','feat-provador3-livro1-3']);checks++;
+assert.equal(status(await req('bob','search?type=feat&category=zzz1&category=zzz2&category=zzz3&category=classe:+Provador'),200).entries.length,0);checks++;
+const fullText=status(await req('bob','search?q=testeirada&maxLevel=1&limit=200'),200).entries;
+assert.equal(fullText.length,53);assert.ok(fullText.every(item=>item.level===1&&item.id.startsWith('feat-talentotesteiro')));checks++;
+assert.equal(status(await req('bob','search?q=testeirada&limit=200'),200).entries.length,200);checks++;
 // Grupo: qualquer membro vê o resumo das fichas dos jogadores ativos; criaturas do mestre só ele; revogado some.
 const wolf=status(await req('gm','characters','POST',{data:{profile:{name:'Lobo'},stats:{hpMax:'24',hpCurrent:'24'}}}),201);
 const partyBob=status(await req('bob','party'),200).characters;
@@ -91,5 +113,5 @@ assert.ok(creatures.every(code=>code===201));checks++;
 // Modo de convite vem do ambiente: o servidor da mesa usa códigos de acesso.
 assert.equal(status(await req('bob','session'),200).invitationMode,'private-site-sharing');checks++;
 env.INVITATION_MODE='access-code';assert.equal(status(await req('bob','session'),200).invitationMode,'access-code');checks++;delete env.INVITATION_MODE;
-console.log('PASS',checks,'checks: membership, privacy, role changes, migration, optimistic locking, books, provisioning, SRD search, session fields, items, party, limits, invitation mode.');
+console.log('PASS',checks,'checks: membership, privacy, role changes, migration, optimistic locking, books, provisioning, SRD search, session fields, sheet v2 fields, items, feat slots (max level, repeated categories, 200 cap), party, limits, invitation mode.');
 sqlite.close();

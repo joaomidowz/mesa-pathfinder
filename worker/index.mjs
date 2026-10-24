@@ -13,10 +13,10 @@ function validateData(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data) || !data.profile || typeof data.profile.name !== 'string') fail(400, 'Ficha inválida: informe o nome do personagem.');
   const text = JSON.stringify(data);
   if (text.length > 900000) fail(413, 'Ficha grande demais.');
-  for (const key of ['stats','skills','feats','inventory','notes','extra','abilities','fieldReferences','spellcasting']) {
+  for (const key of ['stats','skills','feats','inventory','notes','extra','abilities','fieldReferences','spellcasting','defense']) {
     if (key in data && (!data[key] || typeof data[key] !== 'object' || Array.isArray(data[key]))) fail(400, 'Estrutura inválida: ' + key);
   }
-  for (const key of ['attacks','references','spells','items','conditions']) if (key in data && (!Array.isArray(data[key]) || data[key].some(value=>!value || typeof value !== 'object' || Array.isArray(value)))) fail(400, 'Lista inválida: '+key);
+  for (const key of ['attacks','references','spells','items','conditions','choices']) if (key in data && (!Array.isArray(data[key]) || data[key].some(value=>!value || typeof value !== 'object' || Array.isArray(value)))) fail(400, 'Lista inválida: '+key);
   if (data.abilities && Object.keys(data.abilities).some(key=> !/^[\w-]{1,100}$/.test(key))) fail(400, 'Identificador de habilidade inválido.');
   if (data.abilities && Object.values(data.abilities).some(value=>!value || typeof value !== 'object' || Array.isArray(value))) fail(400, 'Habilidade inválida.');
   const forbidden = object => object && typeof object === 'object' && Object.entries(object).some(([key, val]) => ['__proto__','prototype','constructor'].includes(key) || forbidden(val));
@@ -79,8 +79,12 @@ function srdFilters(params) {
   if (type) { if (!SRD_TYPES.includes(type)) fail(400, 'Tipo desconhecido.'); where.push('e.type = ?'); binds.push(type); }
   const level = params.get('level');
   if (level) { if (!/^\d{1,2}$/.test(level)) fail(400, 'Nível inválido.'); where.push('e.level = ?'); binds.push(Number(level)); }
-  const category = params.get('category');
-  if (category) { where.push('e.category_norm LIKE ?'); binds.push('%' + srdSqueeze(category) + '%'); }
+  // Vaga de talento: até o nível da vaga.
+  const maxLevel = params.get('maxLevel');
+  if (maxLevel) { if (!/^\d{1,2}$/.test(maxLevel)) fail(400, 'Nível máximo inválido.'); where.push('e.level <= ?'); binds.push(Number(maxLevel)); }
+  // Até 3 categorias, com OU (a vaga de ancestralidade busca a ancestralidade e a herança versátil juntas).
+  const categories = params.getAll('category').filter(Boolean).slice(0, 3);
+  if (categories.length) { where.push('(' + categories.map(() => 'e.category_norm LIKE ?').join(' OR ') + ')'); binds.push(...categories.map(category => '%' + srdSqueeze(category) + '%')); }
   const trait = params.get('trait');
   if (trait) { where.push('e.traits_norm LIKE ?'); binds.push('%' + srdSqueeze(trait) + '%'); }
   const book = params.get('book');
@@ -90,7 +94,7 @@ function srdFilters(params) {
 async function srdSearch(url, env) {
   const params = url.searchParams;
   const q = (params.get('q') || '').trim().slice(0, 120);
-  const limit = Math.min(Math.max(Number(params.get('limit')) || 25, 1), 100);
+  const limit = Math.min(Math.max(Number(params.get('limit')) || 25, 1), 200);
   const { where, binds } = srdFilters(params);
   const filterSql = where.length ? ' AND ' + where.join(' AND ') : '';
   const seen = new Set();
