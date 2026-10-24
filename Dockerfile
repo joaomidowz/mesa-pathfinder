@@ -5,4 +5,6 @@ WORKDIR /app
 COPY . .
 RUN node scripts/build-worker.mjs
 ENV NODE_ENV=production
-CMD ["npm", "start"]
+# O mesmo que "npm start", sem o npm ficar residente (~40 MB de RAM a menos, que é o que a hospedagem cobra). O exec
+# deixa o node como processo principal, recebendo o SIGTERM que fecha o banco antes de sair.
+CMD ["sh", "-c", "node scripts/preparar.mjs && exec node server.mjs --mesa"]
