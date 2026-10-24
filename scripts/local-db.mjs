@@ -1,19 +1,26 @@
-// Banco local compartilhado: abre data/local.db aplicando as migrações drizzle pendentes.
+// Banco local compartilhado: abre o SQLite aplicando as migrações pendentes — primeiro as de produção (drizzle/),
+// depois as só do servidor local (local/migrations/, registradas com o prefixo "local/").
+// Sem caminho, usa DATA_DIR/local.db (padrão: data/local.db); ':memory:' serve para testes.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const MIGRATIONS = [['drizzle', ''], [path.join('local', 'migrations'), 'local/']];
 
-export function openLocalDb() {
-  fs.mkdirSync(path.join(root, 'data'), { recursive: true });
-  const db = new DatabaseSync(path.join(root, 'data', 'local.db'));
+export function openLocalDb(file = path.join(path.resolve(root, process.env.DATA_DIR || 'data'), 'local.db')) {
+  if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
+  const db = new DatabaseSync(file);
   db.exec('CREATE TABLE IF NOT EXISTS local_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const file of fs.readdirSync(path.join(root, 'drizzle')).filter(name => name.endsWith('.sql')).sort()) {
-    if (db.prepare('SELECT 1 FROM local_migrations WHERE name = ?').get(file)) continue;
-    db.exec(fs.readFileSync(path.join(root, 'drizzle', file), 'utf8'));
-    db.prepare('INSERT INTO local_migrations (name, applied_at) VALUES (?, ?)').run(file, new Date().toISOString());
+  for (const [dir, prefix] of MIGRATIONS) {
+    const folder = path.join(root, dir);
+    if (!fs.existsSync(folder)) continue;
+    for (const name of fs.readdirSync(folder).filter(entry => entry.endsWith('.sql')).sort()) {
+      if (db.prepare('SELECT 1 FROM local_migrations WHERE name = ?').get(prefix + name)) continue;
+      db.exec(fs.readFileSync(path.join(folder, name), 'utf8'));
+      db.prepare('INSERT INTO local_migrations (name, applied_at) VALUES (?, ?)').run(prefix + name, new Date().toISOString());
+    }
   }
   return db;
 }
