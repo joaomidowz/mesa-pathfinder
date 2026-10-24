@@ -122,5 +122,13 @@
 
   const formatNumber = n => String(n).replace('.', ',');
 
-  window.FichaCalc = { toInt, normalizeName, formatModifier, mapSequence, hpState, applyDamage, applyHealing, applyTemp, slotRanks, dailyRest, spellKind, groupSpells, displayName, featName, bulkValue, totalBulk, conditionHasValue, formatNumber };
+  // Painel do grupo: por nome, ou PV mais baixo primeiro (proporção do máximo; sem máximo vai para o fim).
+  function sortSheets(sheets = [], mode = 'nome') {
+    const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR');
+    if (mode !== 'pv') return [...sheets].sort(byName);
+    const percent = sheet => hpState(sheet.stats).percent ?? Infinity;
+    return [...sheets].sort((a, b) => percent(a) - percent(b) || byName(a, b));
+  }
+
+  window.FichaCalc = { toInt, normalizeName, formatModifier, mapSequence, hpState, applyDamage, applyHealing, applyTemp, slotRanks, dailyRest, spellKind, groupSpells, displayName, featName, bulkValue, totalBulk, conditionHasValue, formatNumber, sortSheets };
 })();

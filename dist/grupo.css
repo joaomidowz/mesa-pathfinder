@@ -1,0 +1,39 @@
+/* --- Painel do grupo (só mestre): um cartão por personagem, com os tokens de styles.css --- */
+.sort-label { display: grid; gap: 5px; }
+.sort-label select { min-height: 42px; }
+.party-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 14px; }
+.party-grid.compact { grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 10px; margin-top: 12px; }
+.party-empty { grid-column: 1 / -1; }
+.party-card { display: grid; gap: 10px; align-content: start; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(145deg, #25282a, #191c1e); color: var(--ink); min-width: 0; transition: border-color .15s; }
+.party-card:hover { border-color: var(--gold); }
+.party-card[data-state="critico"], .party-card[data-state="caido"] { border-color: rgba(201,91,72,.75); }
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.card-top h3 { font-size: 1.15rem; overflow-wrap: anywhere; }
+.card-top p { margin: 3px 0 0; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+.armor { flex: none; display: grid; place-content: center; justify-items: center; width: 54px; height: 60px; border: 1px solid var(--gold-soft); border-radius: 10px 10px 50% 50%; background: rgba(226,173,82,.08); }
+.armor span { color: var(--muted); font-size: .66rem; line-height: 1.2; }
+.armor strong { color: var(--gold); font-size: 1.3rem; line-height: 1.1; }
+.hp-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.hp-line strong { font-size: 1.8rem; line-height: 1; }
+.hp-line .max { color: var(--muted); font-weight: 700; }
+.hp-line .temp { color: var(--blue); font-size: .82rem; font-weight: 700; }
+.hp-line .state { margin-left: auto; font-size: .72rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--green); }
+[data-state="ferido"] .hp-line .state { color: var(--gold); }
+[data-state="critico"] .hp-line .state, [data-state="caido"] .hp-line .state { color: var(--red); }
+.party-bar { height: 8px; border-radius: 999px; background: #0d0f10; border: 1px solid var(--line); overflow: hidden; }
+.party-bar > span { display: block; height: 100%; background: var(--green); border-radius: inherit; }
+[data-state="ferido"] .party-bar > span { background: var(--gold); }
+[data-state="critico"] .party-bar > span, [data-state="caido"] .party-bar > span { background: var(--red); }
+.mini-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.mini-stats div { border: 1px solid rgba(255,255,255,.06); border-radius: 8px; padding: 6px 8px; background: #141718; min-width: 0; }
+.mini-stats dt { color: var(--muted); font-size: .7rem; line-height: 1.3; }
+.mini-stats dd { margin: 0; font-weight: 800; font-size: 1.05rem; }
+.party-card .chips { gap: 6px; }
+.party-card .chip { padding: 4px 9px; font-size: .78rem; }
+.chip.condition-chip { color: var(--ink); border-color: var(--gold-soft); background: rgba(226,173,82,.1); }
+.chip.condition-chip strong { color: var(--gold); }
+.compact .party-card { padding: 12px; gap: 8px; }
+.compact .hp-line strong { font-size: 1.45rem; }
+.master-sheets summary { font-size: 1.05rem; color: var(--ink); }
+.master-sheets summary span:first-child { font-weight: 800; }
+.master-sheets > p { margin: 8px 0 0; }

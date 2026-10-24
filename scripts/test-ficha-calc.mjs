@@ -48,5 +48,8 @@ eq(C.totalBulk([{ bulk: 'muito', qty: '1' }, { bulk: '1,5', qty: '2' }]), { tota
 eq(['assustado', 'Cegado', 'Ferido', 'MORRENDO'].map(C.conditionHasValue), [true, false, true, true]);
 eq(C.formatNumber(3.3), '3,3');
 eq(C.normalizeName('Arremesso  Enfurecido!'), 'arremessoenfurecido');
+const party = [{ name: 'Carla', stats: { hpCurrent: '5', hpMax: '26' } }, { name: 'Bruno', stats: { hpCurrent: '38', hpMax: '38' } }, { name: 'Ária', stats: { hpCurrent: '7', hpMax: '' } }, { name: 'Lyra', stats: { hpCurrent: '15', hpMax: '22' } }];
+eq(C.sortSheets(party).map(sheet => sheet.name), ['Ária', 'Bruno', 'Carla', 'Lyra']);
+eq(C.sortSheets(party, 'pv').map(sheet => sheet.name), ['Carla', 'Lyra', 'Bruno', 'Ária']);
 
 console.log('PASS', checks, 'checks: modificadores, ataques múltiplos, PV, espaços de magia, descanso, truques, nomes, volume, condições.');
