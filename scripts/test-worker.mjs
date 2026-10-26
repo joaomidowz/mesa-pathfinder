@@ -48,8 +48,15 @@ sqlite.prepare("INSERT INTO srd_entries (id,type,name,norm,level,category,traits
 sqlite.prepare('INSERT INTO srd_fts (rowid, name, text) SELECT rowid, name, json_extract(data, \'$.text\') FROM srd_entries WHERE id = ?').run('feat-elfoligeiro-livro1-1');
 sqlite.prepare("INSERT INTO srd_pages (book,page,chapter,norm,text) VALUES ('livro1',319,'Magia','exemplodepaginanorm','Texto integral da página com bola de fogo.')").run();
 sqlite.prepare('INSERT INTO srd_pages_fts (rowid, text) SELECT rowid, text FROM srd_pages WHERE rowid = last_insert_rowid()').run();
+// Páginas sintéticas: uma em que "seta" só existe no texto espremido (por cima de palavras) e uma com palavras coladas pelo PDF.
+sqlite.prepare("INSERT INTO srd_pages (book,page,chapter,norm,text) VALUES ('livro1',20,'Introdução','talentosgeraisetalentosdepericia','Talentos gerais e talentos de perícia.')").run();
+sqlite.prepare('INSERT INTO srd_pages_fts (rowid, text) SELECT rowid, text FROM srd_pages WHERE rowid = last_insert_rowid()').run();
+sqlite.prepare("INSERT INTO srd_pages (book,page,chapter,norm,text) VALUES ('livro1',321,'Magia','exemplocomboladefogocoladopelopdf','Exemplo com Bolade Fogo colado pelo PDF.')").run();
+sqlite.prepare('INSERT INTO srd_pages_fts (rowid, text) SELECT rowid, text FROM srd_pages WHERE rowid = last_insert_rowid()').run();
 const search=status(await req('bob','search?q=bola+de+fogo'),200);
 assert.equal(search.entries.length,1);assert.equal(search.entries[0].name,'BOLA DE FOGO');checks++;
+assert.deepEqual(search.pages.map(p=>p.page).sort((a,b)=>a-b),[319,321]);checks++;
+assert.equal(status(await req('bob','search?q=seta'),200).pages.length,0);checks++;
 const noAccent=status(await req('bob','search?q=fogo'),200);
 assert.equal(noAccent.entries.length,1);checks++;
 const byType=status(await req('bob','search?type=feat'),200);

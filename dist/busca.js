@@ -6,6 +6,9 @@ const results = document.getElementById('results');
 const detail = document.getElementById('detail');
 const status = document.getElementById('search-status');
 const statsBox = document.getElementById('stats');
+const layout = document.querySelector('.search-layout');
+// Mesmo corte do styles.css: abaixo dele o detalhe abre logo depois do cartão tocado, e não no fim da lista.
+const narrow = window.matchMedia('(max-width: 1000px)');
 let currentEntry = null;
 
 for (let level = 1; level <= 20; level++) {
@@ -16,7 +19,9 @@ for (let level = 1; level <= 20; level++) {
 }
 
 async function api(path) {
-  const response = await fetch('/api/' + path, { cache: 'no-store' });
+  let response;
+  try { response = await fetch('/api/' + path, { cache: 'no-store' }); }
+  catch { throw new Error('Sem conexão com a mesa.'); }
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Falha na busca.');
   return result;
@@ -37,7 +42,7 @@ function entryCard(entry) {
   card.innerHTML = `<h3>${markify(entry.name)}</h3><p class="small muted">${escapeHtml(metaLine(entry))}</p>` +
     (traits.length ? `<div class="chips">${traits.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('')}</div>` : '') +
     (entry.snippet ? `<p class="result-snippet small">${markify(entry.snippet)}</p>` : '');
-  card.addEventListener('click', () => openDetail(entry));
+  card.addEventListener('click', () => openDetail(entry, card));
   return card;
 }
 
@@ -52,20 +57,31 @@ function pageCard(page) {
   return card;
 }
 
-async function openDetail(entry) {
+function closeDetail() {
+  detail.hidden = true;
+  currentEntry = null;
+  layout.append(detail);
+  results.querySelector('.result-card.selected')?.classList.remove('selected');
+}
+
+async function openDetail(entry, card) {
   currentEntry = entry.id;
+  results.querySelector('.result-card.selected')?.classList.remove('selected');
+  card.classList.add('selected');
   try {
     const full = await api('entries/' + encodeURIComponent(entry.id));
+    if (currentEntry !== entry.id) return; // outro cartão foi tocado enquanto este carregava
     detail.innerHTML = window.Regras.detailHtml(full, { actions: '<button class="btn ghost" id="detail-close" type="button">Fechar</button>' });
+    if (narrow.matches && card.isConnected) card.after(detail); else layout.append(detail);
     detail.hidden = false;
-    detail.querySelector('#detail-close').addEventListener('click', () => { detail.hidden = true; currentEntry = null; render(currentCache); });
+    detail.querySelector('#detail-close').addEventListener('click', closeDetail);
     detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } catch (error) { status.textContent = error.message; }
 }
 
-let currentCache = { entries: [], pages: [] };
 function render(data) {
-  currentCache = data;
+  // O detalhe aberto dentro da lista (telas estreitas) fecha junto com os cartões que ele acompanhava.
+  if (results.contains(detail)) closeDetail();
   results.replaceChildren();
   if (data.entries.length) {
     const head = document.createElement('h2');

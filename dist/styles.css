@@ -162,7 +162,7 @@ dialog form { display: flex; justify-content: flex-end; margin-top: 18px; }
 #stats .chip { cursor: pointer; background: #151819; }
 #stats .chip:hover { border-color: var(--gold); color: var(--ink); }
 .search-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 460px); gap: 16px; align-items: start; margin-top: 16px; }
-.result-card { border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(145deg, #20232400, rgba(27,30,32,.9)); background-color: #17191b; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: border-color .12s; }
+.result-card { display: block; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(145deg, #20232400, rgba(27,30,32,.9)); background-color: #17191b; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: border-color .12s; }
 .result-card:hover { border-color: var(--gold); }
 .result-card.selected { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .result-card.page-result { cursor: pointer; background: #14171a; }
@@ -180,3 +180,19 @@ dialog form { display: flex; justify-content: flex-end; margin-top: 18px; }
 .detail-panel table { min-width: 0; }
 .level-cell { font-weight: 800; color: var(--gold); width: 44px; }
 #results h2 { margin: 4px 0 12px; }
+
+/* Sem detalhe aberto, os resultados ocupam a largura toda (antes a coluna vazia do detalhe espremia a lista). */
+.search-layout:has(> #detail[hidden]) { grid-template-columns: minmax(0, 1fr); }
+
+/* Busca em telas estreitas: estas regras vêm depois das de base para valerem. O detalhe deixa de ser coluna
+   e o busca.js o põe logo abaixo do cartão tocado. */
+@media (max-width: 1000px) {
+  .search-layout { grid-template-columns: minmax(0, 1fr); }
+  .detail-panel { position: static; max-height: none; margin-bottom: 10px; border-color: var(--gold-soft); }
+}
+@media (max-width: 760px) {
+  .search-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .search-box { flex-direction: column; align-items: stretch; }
+  /* Os resultados começam mais cedo na tela: a contagem por tipo e o texto de abertura somem no celular. */
+  #stats, .search-hero .lead { display: none; }
+}

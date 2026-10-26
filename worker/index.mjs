@@ -118,7 +118,9 @@ async function srdSearch(url, env) {
   if (q && !params.get('type')) {
     const pageHits = await env.DB.prepare("SELECT p.book, p.page, p.chapter, snippet(srd_pages_fts, 0, char(1), char(2), '…', 24) AS snippet FROM srd_pages_fts JOIN srd_pages p ON p.rowid = srd_pages_fts.rowid WHERE srd_pages_fts MATCH ? LIMIT 8").bind(ftsQuery(q)).all();
     pages = pageHits.results;
-    if (pages.length < 4) {
+    // O reforço pelo texto espremido acha frases que o PDF colou ("Bolade Fogo"), mas uma palavra sozinha casa por cima
+    // das palavras ("gerais e talentos" contém "seta"): por isso ele só entra em buscas de mais de uma palavra.
+    if (pages.length < 4 && /\s/.test(q)) {
       const like = '%' + srdSqueeze(q) + '%';
       const extraPages = await env.DB.prepare("SELECT p.book, p.page, p.chapter, substr(p.text, 1, 260) AS snippet FROM srd_pages p WHERE p.norm LIKE ? LIMIT 8").bind(like).all();
       const have = new Set(pages.map(p => p.book + '/' + p.page));
