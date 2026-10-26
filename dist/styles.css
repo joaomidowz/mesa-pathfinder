@@ -53,7 +53,7 @@ h3 { font-size: 1rem; }
 .cloud-status[data-state="offline"] { color: var(--red); }
 .hero-name { background: transparent; border: 0; border-bottom: 1px solid var(--gold-soft); border-radius: 0; color: var(--ink); font-size: inherit; font-weight: 800; letter-spacing: -.04em; padding: 0; width: min(100%, 720px); }
 .hero .lead input { display: inline; width: auto; min-width: 4ch; background: transparent; border: 0; border-bottom: 1px dotted var(--line); border-radius: 0; padding: 0; color: var(--muted); }
-.file-button { display: inline-flex; align-items: center; position: relative; overflow: hidden; }
+.file-button { display: inline-flex; align-items: center; position: relative; overflow: hidden; font-size: inherit; }
 .file-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
 .hero { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
 .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }

@@ -205,4 +205,38 @@ eq(C.shieldFromEntry({ category: 'escudo', data: { acBonus: '+2', hardness: '3',
 eq(C.shieldFromEntry({ category: 'escudo', data: { acBonus: '+2/+4', hardness: '5', hitPoints: '20 (10)' } }), { bonus: '2', cover: '4', hardness: '5', hpMax: '20', bt: '10' });
 eq([C.shieldFromEntry({ category: 'escudo mágico', data: { price: '10 po' } }), C.shieldFromEntry({ category: 'armadura leve', data: { acBonus: '+1', hardness: '3', hitPoints: '6 (3)' } }), C.shieldFromEntry(undefined)], [null, null, null]);
 
-console.log('PASS', checks, 'checks: modificadores, ataques múltiplos, PV, espaços de magia, descanso, truques, nomes, volume e moedas, condições, milhar e botões, linhas do inventário, migração idempotente, escolhas de talento, catálogo, morrendo/ferido, CA e escudo.');
+// Subir de nível: ganhos da tabela da classe (texto sintético no formato do livro) e PV por nível.
+eq(C.levelGains('Talento de guardião, talento de perícia'), { slots: ['classe', 'pericia'], skillIncrease: false, attributeBoosts: false, other: [] });
+eq(C.levelGains('Talento de ancestralidade, melhorias de atributo, golpe forte, incremento de perícia'), { slots: ['ancestralidade'], skillIncrease: true, attributeBoosts: true, other: ['Golpe forte'] });
+eq(C.levelGains('Magias de 2º ranque, talentogeral, incrementodeperícia, melhoriasdeatributo'), { slots: ['geral'], skillIncrease: true, attributeBoosts: true, other: ['Magias de 2º ranque'] });
+eq(C.levelGains('Talento de guardião, talento de perícia, talento de guardião'), { slots: ['classe', 'pericia'], skillIncrease: false, attributeBoosts: false, other: [] });
+eq([C.levelGains('').slots.length, C.levelGains(undefined).other.length], [0, 0]);
+eq(C.levelGains('Melhorias de atributo, talento de guardião, talento'), { slots: ['classe'], skillIncrease: false, attributeBoosts: true, other: [] });
+eq([C.hpGain(12, '2'), C.hpGain('8', '+0'), C.hpGain(6, '-1'), C.hpGain('', '-3'), C.hpGain(10, 'abc')], [14, 8, 5, 1, 10]);
+// PV de nível: a marca pvAte, o Somar de vários níveis e o − que desfaz só o que foi somado.
+const levelSheet = (level, hp, extra) => ({ profile: { level: String(level) }, stats: { hpMax: String(hp), hpCurrent: String(hp) }, extra });
+{ // Ficha convertida (sem marca) no nível 2: − e Subir não oferecem de novo os PV que ela já tinha.
+  const d = levelSheet(2, 30, {});
+  eq([C.hpCountedTo(d), C.sumLevelHp(d, 12)], [2, 0]);
+  C.levelDown(d); eq([d.profile.level, d.extra.pvAte, d.stats.hpMax], ['1', '2', '30']);
+  C.levelUp(d); eq([d.profile.level, C.hpCountedTo(d), C.sumLevelHp(d, 12), d.stats.hpMax], ['2', 2, 0, '30']);
+}
+{ // 2 → 3 → 4 sem somar: o 4 oferece os dois níveis; voltando ao 3, só o 3.
+  const d = levelSheet(2, 30, undefined);
+  C.levelUp(d); C.levelUp(d); eq([d.profile.level, 4 - C.hpCountedTo(d)], ['4', 2]);
+  C.levelDown(d); eq([d.profile.level, 3 - C.hpCountedTo(d), d.stats.hpMax], ['3', 1, '30']);
+  C.levelUp(d); eq([C.sumLevelHp(d, 12), d.stats.hpMax, d.stats.hpCurrent, d.extra.pvAte, d.extra.pvNiveis], [24, '54', '54', '4', { 3: '12', 4: '12' }]);
+  eq(C.sumLevelHp(d, 12), 0);
+  C.levelDown(d); eq([d.profile.level, d.stats.hpMax, d.extra.pvAte, C.sumLevelHp(d, 12)], ['3', '42', '3', 0]);
+  C.levelDown(d); eq([d.profile.level, d.stats.hpMax, d.extra.pvAte, d.extra.pvNiveis], ['2', '30', '2', {}]);
+}
+{ // Somar, − e Subir: oferece de novo. Desfazer não deixa PV atuais abaixo de 0; nível 1 e 20 são os limites.
+  const d = levelSheet(2, 30, {});
+  C.levelUp(d); C.sumLevelHp(d, 12); d.stats.hpCurrent = '5';
+  C.levelDown(d); eq([d.stats.hpMax, d.stats.hpCurrent], ['30', '0']);
+  C.levelUp(d); eq(C.sumLevelHp(d, 12), 12);
+  const low = levelSheet(1, 8, {}); C.levelDown(low); eq([low.profile.level, low.stats.hpMax, low.extra.pvAte], ['1', '8', '1']);
+  const top = levelSheet(20, 200, {}); C.levelUp(top); eq([top.profile.level, C.sumLevelHp(top, 12)], ['20', 0]);
+}
+
+console.log('PASS', checks, 'checks: modificadores, ataques múltiplos, PV, espaços de magia, descanso, truques, nomes, volume e moedas, condições, milhar e botões, linhas do inventário, migração idempotente, escolhas de talento, catálogo, morrendo/ferido, CA e escudo, subir de nível.');

@@ -1,31 +1,60 @@
 <!doctype html>
-<html lang="pt-BR" class="character-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Personagem · Mesa Pathfinder</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="sessao.css"></head>
+<html lang="pt-BR" class="character-page"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111315"><title>Personagem · Mesa Pathfinder</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="sessao.css"></head>
 <body><header class="topbar"><div class="shell topbar-inner"><a class="brand" href="mesa.html"><span class="brand-mark"><span>ᚠ</span></span><span><span class="brand-title">Mesa Pathfinder</span><br><span class="brand-sub">ficha do personagem</span></span></a><nav><a href="mesa.html">Mesa</a></nav></div></header>
 <main class="shell session" data-session>
 <section class="char-top" data-top>
-<div class="char-top-row"><div class="char-id"><h1 data-name>Carregando…</h1><p class="small muted" data-subtitle></p></div><div class="level-stepper"><button type="button" class="mini" data-action="level-dec" data-mutate aria-label="Descer um nível">−</button><span class="level-label">Nível <strong data-level>—</strong></span><button type="button" class="mini" data-action="level-inc" data-mutate aria-label="Subir um nível">+</button></div></div>
+<div class="char-top-row"><div class="char-id"><h1 data-name>Carregando…</h1><p class="small muted" data-subtitle></p></div><button type="button" class="save-button" data-save data-mutate data-state="saved" title="Salva na nuvem agora. Também salva sozinho quando você sai da página ou troca de app."><span class="save-dot" aria-hidden="true"></span><span data-save-label>Salvo</span></button></div>
 <button type="button" class="top-vitals" data-action="tab" data-tab-target="combate" data-top-vitals aria-label="Abrir o Combate"></button>
 <div class="top-status"><span class="chip readonly-chip" data-readonly-chip hidden>Visão do mestre · somente leitura</span><p class="cloud-status" data-cloud-status>Carregando sua ficha com segurança…</p></div>
-<div class="tabs" role="tablist" aria-label="Partes da ficha"><button type="button" role="tab" id="tab-ficha" aria-controls="panel-ficha" data-action="tab" data-tab="ficha">Ficha</button><button type="button" role="tab" id="tab-combate" aria-controls="panel-combate" data-action="tab" data-tab="combate">Combate</button><button type="button" role="tab" id="tab-pesquisa" aria-controls="panel-pesquisa" data-action="tab" data-tab="pesquisa">Pesquisa</button></div>
+<div class="tabs" role="tablist" aria-label="Partes da ficha">
+<button type="button" role="tab" id="tab-combate" aria-controls="panel-combate" data-action="tab" data-tab="combate"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4l10.5 10.5M20 4L9.5 14.5M12.5 16.5l3-3M11.5 16.5l-3-3M15 18l3 3M9 18l-3 3"/></svg><span>Combate</span></button>
+<button type="button" role="tab" id="tab-habilidades" aria-controls="panel-habilidades" data-action="tab" data-tab="habilidades"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6.5c2.5-2 5.5-2 8-1V19c-2.5-1-5.5-1-8 1-2.5-2-5.5-2-8-1zM12 6.5V20"/></svg><span>Habilidades</span></button>
+<button type="button" role="tab" id="tab-evoluir" aria-controls="panel-evoluir" data-action="tab" data-tab="evoluir"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 13l6-6 6 6M6 19l6-6 6 6"/></svg><span>Evoluir</span></button>
+<button type="button" role="tab" id="tab-itens" aria-controls="panel-itens" data-action="tab" data-tab="itens"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9a6 6 0 0 1 12 0v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zM9 3.5h6M9 21v-5h6v5"/></svg><span>Itens</span></button>
+<button type="button" role="tab" id="tab-ficha" aria-controls="panel-ficha" data-action="tab" data-tab="ficha"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 3h8l4 4v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 11h6M9 15h6M9 7h3"/></svg><span>Ficha</span></button>
+</div>
 </section>
 <p class="note migration-note" data-migration-note role="status" hidden></p>
 
-<section id="panel-ficha" class="tab-panel" role="tabpanel" aria-labelledby="tab-ficha" data-panel="ficha">
-<div class="jump-list"><span class="small muted">Ir para</span><button type="button" class="chip" data-action="jump" data-target="ficha-defesa">Defesa</button><button type="button" class="chip" data-action="jump" data-target="ficha-escolhas">Escolhas</button><button type="button" class="chip" data-action="jump" data-target="ficha-magias">Magias</button><button type="button" class="chip" data-action="jump" data-target="ficha-inventario">Inventário</button><button type="button" class="chip" data-action="jump" data-target="ficha-anotacoes">Anotações</button></div>
+<section id="panel-combate" class="tab-panel" role="tabpanel" aria-labelledby="tab-combate" data-panel="combate">
+<div class="combat-row">
+<section class="panel hp-card"><div data-hp-display></div><div class="hp-controls" data-mutate><input id="hp-amount" type="number" inputmode="numeric" min="0" placeholder="PV" aria-label="Quantos PV de dano, cura ou temporários"><button type="button" class="btn damage" data-action="damage">Dano</button><button type="button" class="btn heal" data-action="heal">Cura</button><button type="button" class="btn" data-action="temp" title="PV temporários não se somam: fica o maior valor">Temp.</button></div><div class="counter-row" data-temp-counter></div></section>
+<div class="combat-side"><div class="combat-mini"><section class="panel badge-card" data-ac-card></section><section class="panel badge-card" data-shield-card hidden></section><section class="panel badge-card" data-perception-card></section></div><section class="panel combat-strip" data-combat-strip></section></div>
+</div>
+<div class="session-grid">
+<div class="session-col"><section class="panel" data-strikes></section><details class="panel edit-block"><summary>Editar armas e ataques</summary><div class="grid section-space" data-attacks></div></details><section class="panel" data-conditions></section><section class="panel state-card" data-dying-card></section></div>
+<div class="session-col"><section class="panel" data-spells-use></section><section class="panel" data-skill-list></section><section class="panel" data-defenses></section></div>
+</div>
+</section>
 
-<section class="panel" id="ficha-progressao"><div class="panel-head"><div><h2>Progressão</h2><p>O nível sobe e desce só pelos botões − e + do topo.</p></div></div>
-<div class="xp-row"><label class="field xp-field">Experiência (XP)<input data-bind="profile.xp" inputmode="numeric" autocomplete="off"></label><div class="xp-quick" data-mutate><span class="small muted">Somar</span><button type="button" class="btn" data-action="xp-add" data-amount="10">+10</button><button type="button" class="btn" data-action="xp-add" data-amount="30">+30</button><button type="button" class="btn" data-action="xp-add" data-amount="40">+40</button><button type="button" class="btn" data-action="xp-add" data-amount="80">+80</button><button type="button" class="btn" data-action="xp-add" data-amount="120">+120</button></div></div></section>
+<section id="panel-habilidades" class="tab-panel" role="tabpanel" aria-labelledby="tab-habilidades" data-panel="habilidades" hidden>
+<section class="panel search-card"><div class="panel-head"><div><h2>Buscar regra</h2><p>Magias, talentos, condições e itens dos dois livros. Toque para ler.</p></div></div>
+<div class="picker-tools with-type"><input type="search" data-search-q data-free placeholder="Ex.: fúria, bola de fogo, cegado…" autocomplete="off" aria-label="Buscar regras"><select data-search-type data-free aria-label="Tipo"><option value="">Tudo</option><option value="spell">Magias e truques</option><option value="focus">Magias de foco</option><option value="ritual">Rituais</option><option value="feat">Talentos</option><option value="class">Classes</option><option value="ancestry">Ancestralidades</option><option value="condition">Condições</option><option value="item">Itens</option></select></div>
+<p class="small muted" data-search-status role="status">Digite para buscar.</p><div class="picker-results" data-search-results></div>
+<p class="small"><a class="accent" data-search-full href="busca.html" target="_blank" rel="noopener">Busca completa ↗</a> · <a class="accent" href="livro.html" target="_blank" rel="noopener">Livros ↗</a></p></section>
+<div class="session-grid">
+<div class="session-col"><section class="panel" data-feat-list></section><details class="panel edit-block"><summary>Editar habilidades e ações</summary><div class="grid section-space" data-abilities></div></details></div>
+<div class="session-col"><section class="panel" data-spell-read hidden></section><section class="panel" data-skill-list></section></div>
+</div>
+</section>
 
-<section class="panel" id="ficha-identidade"><div class="panel-head"><div><h2>Identidade</h2><p>Classe, ancestralidade e herança sugerem os nomes dos livros, que filtram as Escolhas.</p></div></div>
-<div class="form-grid"><label class="field">Nome do personagem<input data-bind="profile.name"></label><label class="field">Nome do jogador<input data-bind="profile.player"></label><label class="field">Classe<input data-bind="profile.className" list="lista-classes" autocomplete="off"></label><label class="field">Ancestralidade<input data-bind="profile.ancestry" list="lista-ancestralidades" autocomplete="off"></label><label class="field">Herança<input data-bind="profile.heritage" list="lista-herancas" autocomplete="off"></label><label class="field">Biografia<input data-bind="profile.background"></label><label class="field">Instinto / subclasse<input data-bind="profile.instinct"></label><label class="field">Divindade<input data-bind="profile.deity"></label><label class="field full">Idiomas<textarea data-bind="languages"></textarea></label></div>
-<datalist id="lista-classes"></datalist><datalist id="lista-ancestralidades"></datalist><datalist id="lista-herancas"></datalist></section>
+<section id="panel-evoluir" class="tab-panel" role="tabpanel" aria-labelledby="tab-evoluir" data-panel="evoluir" hidden>
+<section class="panel level-card" id="evoluir-nivel" data-level-card></section>
+<section class="panel" id="evoluir-xp"><div class="panel-head"><div><h2>Experiência</h2><p data-mutate>Some o XP da sessão; o nível sobe só pelo botão acima.</p></div></div>
+<div class="xp-row"><label class="field xp-field">XP<input data-bind="profile.xp" inputmode="numeric" autocomplete="off"></label><div class="xp-quick" data-mutate><button type="button" class="btn" data-action="xp-add" data-amount="10">+10</button><button type="button" class="btn" data-action="xp-add" data-amount="30">+30</button><button type="button" class="btn" data-action="xp-add" data-amount="40">+40</button><button type="button" class="btn" data-action="xp-add" data-amount="80">+80</button><button type="button" class="btn" data-action="xp-add" data-amount="120">+120</button></div></div></section>
 
-<section class="panel" id="ficha-atributos"><div class="panel-head"><div><h2>Atributos e defesas</h2><p>Valores da ficha. A CA é a que vale; a conta do livro fica em Defesa.</p></div></div>
+<section class="panel" id="evoluir-escolhas"><div class="panel-head"><div><h2>Escolhas</h2><p>Talentos da lista dos livros, filtrada pela classe, ancestralidade e nível.</p></div></div>
+<div data-choices></div>
+<div class="choice-add section-space" data-mutate><label class="field">Vaga<select data-choice-slot aria-label="Tipo de escolha"><option value="classe">Talento de classe</option><option value="ancestralidade">Talento de ancestralidade</option><option value="pericia">Talento de perícia</option><option value="geral">Talento geral</option><option value="arquetipo">Arquétipo</option><option value="biografia">Talento da biografia</option></select></label><label class="field">Nível<select data-choice-level aria-label="Nível da escolha"></select></label><button type="button" class="btn primary" data-action="choice-add">+ Escolha</button></div>
+<p class="small muted" data-choice-hint></p>
+<label class="field section-space">Características de ancestralidade e herança<input data-bind="feats.ancestry"></label></section>
+
+<section class="panel" id="evoluir-atributos"><div class="panel-head"><div><h2>Atributos e defesas</h2><p>Valores da ficha. A CA é a que vale; a conta do livro fica em Defesa.</p></div></div>
 <div class="stat-grid"><label class="stat-field">Força<input data-bind="stats.str" inputmode="numeric"></label><label class="stat-field">Destreza<input data-bind="stats.dex" inputmode="numeric"></label><label class="stat-field">Constituição<input data-bind="stats.con" inputmode="numeric"></label><label class="stat-field">Inteligência<input data-bind="stats.int" inputmode="numeric"></label><label class="stat-field">Sabedoria<input data-bind="stats.wis" inputmode="numeric"></label><label class="stat-field">Carisma<input data-bind="stats.cha" inputmode="numeric"></label></div>
 <div class="stat-grid section-space"><label class="stat-field">PV atuais<input data-bind="stats.hpCurrent" inputmode="numeric"></label><label class="stat-field">PV máximos<input data-bind="stats.hpMax" inputmode="numeric"></label><label class="stat-field">CA da ficha<input data-bind="stats.ac" inputmode="numeric"></label><label class="stat-field">Percepção<input data-bind="stats.perception" inputmode="numeric"></label><label class="stat-field">Fortitude<input data-bind="stats.fort" inputmode="numeric"></label><label class="stat-field">Reflexos<input data-bind="stats.reflex" inputmode="numeric"></label><label class="stat-field">Vontade<input data-bind="stats.will" inputmode="numeric"></label><label class="stat-field">Velocidade (m)<input data-bind="stats.speed" inputmode="decimal"></label><label class="stat-field">CD de classe<input data-bind="stats.classDc" inputmode="numeric"></label></div>
 <p class="note section-space" data-barbarian hidden>Fúria: nível + Constituição = <strong data-calc="rage-temp"></strong> PV temporários, e −1 de CA enquanto durar. Consulte sua versão da regra.</p></section>
 
-<section class="panel" id="ficha-defesa"><div class="panel-head"><div><h2>Defesa</h2><p>Como na ficha oficial. A conta confere a CA, mas só muda a ficha quando você toca em Usar.</p></div></div>
+<section class="panel" id="evoluir-defesa"><div class="panel-head"><div><h2>Defesa</h2><p>Como na ficha oficial. A conta confere a CA, mas só muda a ficha quando você toca em Usar.</p></div></div>
 <div class="defense-grid"><div class="ac-formula"><h3 class="group-title">Classe de Armadura</h3><div class="formula-row"><span class="formula-cell"><strong>10</strong><small>Base</small></span><span class="formula-plus">+</span><span class="formula-cell"><strong data-formula="dex">—</strong><small>Des*</small></span><span class="formula-plus">+</span><span class="formula-cell"><strong data-formula="prof">—</strong><small>Prof</small></span><span class="formula-plus">+</span><label class="formula-cell"><input data-bind="defense.ac.item" inputmode="numeric" placeholder="0" aria-label="Bônus de item da armadura"><small>Item</small></label></div>
 <div class="form-grid section-space"><label class="field">Armadura usada<select data-bind="defense.ac.category"><option value="">Escolha…</option><option value="unarmored">Sem armadura</option><option value="light">Leve</option><option value="medium">Média</option><option value="heavy">Pesada</option></select></label><label class="field">Limite de Des da armadura<input data-bind="defense.ac.dexCap" inputmode="numeric" placeholder="sem limite"></label></div>
 <p class="ac-check" data-ac-check role="status"></p><p class="small muted">*Use o limite de Des da armadura se for menor.</p></div>
@@ -33,61 +62,39 @@
 <h3 class="group-title section-space">Escudo</h3><div class="prof-grid"><label class="field">Bônus<input data-bind="defense.shield.bonus" inputmode="numeric" placeholder="+2"></label><label class="field">Dureza<input data-bind="defense.shield.hardness" inputmode="numeric"></label><label class="field">PV máx<input data-bind="defense.shield.hpMax" inputmode="numeric"></label><label class="field">LQ<input data-bind="defense.shield.bt" inputmode="numeric" aria-label="Limiar de quebra"></label></div></div></div>
 <div class="head-actions section-space" data-mutate><button type="button" class="btn" data-action="fill-equipped">Preencher pelos equipados</button></div><p class="small muted" data-fill-status role="status"></p></section>
 
-<section class="panel" id="ficha-pericias"><div class="panel-head"><div><h2>Perícias</h2><p>Toque em Explicar. Cada perícia pode ter uma referência ao livro.</p></div></div><div class="skill-list" data-skills></div></section>
+<section class="panel" id="evoluir-pericias"><div class="panel-head"><div><h2>Perícias</h2><p>Valor total de cada uma (bônus já somado). Explicar mostra para que serve.</p></div></div><div class="skill-list" data-skills></div></section>
 
-<section class="panel" id="ficha-escolhas"><div class="panel-head"><div><h2>Escolhas</h2><p>Talentos escolhidos da lista dos livros, filtrada pela classe, ancestralidade e nível.</p></div></div>
-<label class="field">Características de ancestralidade e herança<input data-bind="feats.ancestry"></label>
-<div class="section-space" data-choices></div>
-<div class="choice-add section-space" data-mutate><label class="field">Vaga<select data-choice-slot aria-label="Tipo de escolha"><option value="classe">Talento de classe</option><option value="ancestralidade">Talento de ancestralidade</option><option value="pericia">Talento de perícia</option><option value="geral">Talento geral</option><option value="arquetipo">Arquétipo</option><option value="biografia">Talento da biografia</option></select></label><label class="field">Nível<select data-choice-level aria-label="Nível da escolha"></select></label><button type="button" class="btn primary" data-action="choice-add">+ Escolha</button></div>
-<p class="small muted" data-choice-hint></p></section>
+<section class="panel" id="evoluir-magias"><div class="panel-head"><div><h2>Magias</h2><p>Tradição, CD, espaços por ranque e a lista de magias.</p></div><button type="button" class="btn" data-action="spell-add" data-mutate>+ Magia</button></div><div class="spell-edit" data-casting-form></div><div class="section-space" data-spell-book></div></section>
+</section>
 
-<section class="panel" id="ficha-habilidades"><div class="panel-head"><div><h2>Habilidades e ações</h2><p>Descrição, fonte, livro e página impressa, tudo editável.</p></div></div><div class="grid" data-abilities></div></section>
-
-<section class="panel" id="ficha-golpes"><div class="panel-head"><div><h2>Armas e ataques</h2><p>Bônus, dano e traços. O Combate mostra os ataques múltiplos.</p></div></div><div class="grid" data-attacks></div></section>
-
-<section class="panel" id="ficha-magias"><div class="panel-head"><div><h2>Magias</h2><p>Tradição, CD, espaços por ranque e a lista de magias.</p></div><button type="button" class="btn" data-action="spell-add" data-mutate>+ Magia</button></div><div class="spell-edit" data-casting-form></div><div class="section-space" data-spell-book></div></section>
-
-<section class="panel" id="ficha-inventario"><div class="panel-head"><div><h2>Inventário</h2><p>Volume pelo livro: 10 itens L contam 1. Toque no item para notas, aba e regra.</p></div><button type="button" class="btn" data-action="item-add" data-mutate>+ Item</button></div>
+<section id="panel-itens" class="tab-panel" role="tabpanel" aria-labelledby="tab-itens" data-panel="itens" hidden>
+<section class="panel" id="itens-inventario"><div class="panel-head"><div><h2>Inventário</h2><p>Volume pelo livro: 10 itens L contam 1. Toque no item para notas, aba e regra.</p></div><button type="button" class="btn primary" data-action="item-add" data-mutate>+ Item</button></div>
 <div class="subtabs" role="tablist" aria-label="Partes do inventário" data-inv-tabs></div>
 <div class="inv-table" data-inv-body></div>
-<p class="bulk-total" data-bulk-total></p>
-<h3 class="group-title section-space">Riqueza</h3>
+<p class="bulk-total" data-bulk-total></p></section>
+<section class="panel" id="itens-riqueza"><div class="panel-head"><div><h2>Riqueza</h2><p>1 PL = 10 PO = 100 PP = 1.000 PC.</p></div></div>
 <div class="coins"><label class="coin"><span>PL</span><input data-bind="inventory.coins.pl" inputmode="numeric" aria-label="Peças de platina"></label><label class="coin"><span>PO</span><input data-bind="inventory.coins.po" inputmode="numeric" aria-label="Peças de ouro"></label><label class="coin"><span>PP</span><input data-bind="inventory.coins.pp" inputmode="numeric" aria-label="Peças de prata"></label><label class="coin"><span>PC</span><input data-bind="inventory.coins.pc" inputmode="numeric" aria-label="Peças de cobre"></label></div>
 <p class="small muted" data-coins-total></p>
 <details class="legacy" data-legacy hidden><summary>Texto antigo do inventário</summary><p class="small muted">O que estava escrito antes da tabela. Confira e apague quando não precisar mais.</p><dl class="inventory-notes" data-legacy-body></dl><button type="button" class="btn ghost section-space" data-action="legacy-clear" data-mutate>Apagar texto antigo</button></details></section>
+</section>
 
-<section class="panel" id="ficha-anotacoes"><div class="panel-head"><div><h2>Anotações</h2><p>Diário da campanha.</p></div></div>
+<section id="panel-ficha" class="tab-panel" role="tabpanel" aria-labelledby="tab-ficha" data-panel="ficha" hidden>
+<section class="panel" id="ficha-identidade"><div class="panel-head"><div><h2>Identidade</h2><p>Classe, ancestralidade e herança sugerem os nomes dos livros, que filtram as Escolhas.</p></div></div>
+<div class="form-grid"><label class="field">Nome do personagem<input data-bind="profile.name"></label><label class="field">Nome do jogador<input data-bind="profile.player"></label><label class="field">Classe<input data-bind="profile.className" list="lista-classes" autocomplete="off"></label><label class="field">Ancestralidade<input data-bind="profile.ancestry" list="lista-ancestralidades" autocomplete="off"></label><label class="field">Herança<input data-bind="profile.heritage" list="lista-herancas" autocomplete="off"></label><label class="field">Biografia<input data-bind="profile.background"></label><label class="field">Instinto / subclasse<input data-bind="profile.instinct"></label><label class="field">Divindade<input data-bind="profile.deity"></label><label class="field full">Idiomas<textarea data-bind="languages"></textarea></label></div>
+<datalist id="lista-classes"></datalist><datalist id="lista-ancestralidades"></datalist><datalist id="lista-herancas"></datalist></section>
+
+<section class="panel" id="ficha-anotacoes"><div class="panel-head"><div><h2>Anotações</h2><p>Diário da campanha. Digite à vontade: salva no botão Salvar ou ao sair da página.</p></div></div>
 <details open><summary>Resumo da última sessão</summary><textarea data-bind="notes.session" placeholder="Escreva aqui após a sessão…" aria-label="Resumo da última sessão"></textarea></details>
 <details open><summary>Próximas dúvidas</summary><textarea data-bind="notes.questions" aria-label="Próximas dúvidas"></textarea></details>
 <details><summary>Origem e personalidade</summary><textarea data-bind="notes.personality" aria-label="Origem e personalidade"></textarea><label class="field section-space">História<textarea data-bind="notes.history"></textarea></label></details>
 <details><summary>Pessoas e grupos</summary><label class="field">Aliados<textarea data-bind="notes.allies"></textarea></label><label class="field section-space">Inimigos<textarea data-bind="notes.enemies"></textarea></label><label class="field section-space">Organizações<textarea data-bind="notes.organizations"></textarea></label></details>
 <details><summary>Caderno de referências</summary><div class="grid section-space" data-references></div></details></section>
 
-<section class="panel" id="ficha-backup"><div class="panel-head"><div><h2>Backup</h2><p>Uma cópia da ficha neste aparelho, para guardar ou trazer de volta.</p></div></div><div class="hero-actions"><button type="button" class="btn" data-save data-mutate>Salvar agora</button><button type="button" class="btn" data-export>Baixar backup</button><label class="btn file-button" data-mutate>Importar backup<input type="file" data-import accept="application/json"></label></div></section>
-</section>
-
-<section id="panel-combate" class="tab-panel" role="tabpanel" aria-labelledby="tab-combate" data-panel="combate" hidden>
-<div class="combat-row">
-<section class="panel hp-card"><div data-hp-display></div><div class="hp-controls" data-mutate><input id="hp-amount" type="number" inputmode="numeric" min="0" placeholder="PV" aria-label="Quantos PV de dano, cura ou temporários"><button type="button" class="btn damage" data-action="damage">Dano</button><button type="button" class="btn heal" data-action="heal">Cura</button><button type="button" class="btn" data-action="temp" title="PV temporários não se somam: fica o maior valor">Temp.</button></div><div class="counter-row" data-temp-counter></div></section>
-<div class="combat-mini"><section class="panel badge-card" data-ac-card></section><section class="panel badge-card" data-shield-card hidden></section><section class="panel badge-card" data-perception-card></section></div>
-</div>
-<section class="panel shield-strip" data-shield-strip hidden></section>
-<section class="panel" data-dying-card></section>
-<div class="session-grid">
-<div class="session-col"><section class="panel" data-defenses></section><section class="panel" data-conditions></section><section class="panel" data-strikes></section><section class="panel" data-skill-list></section></div>
-<div class="session-col"><section class="panel" data-spells-use></section><section class="panel" data-feat-list></section></div>
-</div>
-</section>
-
-<section id="panel-pesquisa" class="tab-panel" role="tabpanel" aria-labelledby="tab-pesquisa" data-panel="pesquisa" hidden>
-<section class="panel"><div class="panel-head"><div><h2>Pesquisa</h2><p>Magias, talentos, condições e itens dos dois livros. Toque para ler a regra.</p></div></div>
-<div class="picker-tools with-type"><input type="search" data-search-q data-free placeholder="Ex.: bola de fogo, investida, cegado…" autocomplete="off" aria-label="Buscar regras"><select data-search-type data-free aria-label="Tipo"><option value="">Tudo</option><option value="spell">Magias e truques</option><option value="focus">Magias de foco</option><option value="ritual">Rituais</option><option value="feat">Talentos</option><option value="class">Classes</option><option value="ancestry">Ancestralidades</option><option value="condition">Condições</option><option value="item">Itens</option></select></div>
-<p class="small muted" data-search-status role="status">Digite para buscar.</p><div class="picker-results" data-search-results></div>
-<p class="small section-space"><a class="accent" data-search-full href="busca.html" target="_blank" rel="noopener">Busca completa ↗</a> · <a class="accent" href="livro.html" target="_blank" rel="noopener">Livros ↗</a></p></section>
+<section class="panel" id="ficha-backup"><div class="panel-head"><div><h2>Backup</h2><p>Uma cópia da ficha neste aparelho, para guardar ou trazer de volta.</p></div></div><div class="hero-actions"><button type="button" class="btn" data-export>Baixar backup</button><label class="btn file-button" data-mutate>Importar backup<input type="file" data-import accept="application/json"></label></div></section>
 </section>
 </main>
 <dialog id="help-modal"><h2 data-help-title></h2><p data-help-body></p><form method="dialog"><button class="btn primary">Fechar</button></form></dialog>
 <dialog id="rule-dialog" class="rule-dialog" aria-label="Regra"></dialog>
 <dialog id="picker-dialog" class="picker-dialog" aria-label="Adicionar do catálogo"></dialog>
-<footer class="shell footer"><span>Salvamento automático · backup por personagem</span><span>Toque em qualquer magia, talento, item ou condição para ler a regra</span></footer>
+<footer class="shell footer"><span>Salva no botão Salvar ou ao sair da página · backup por personagem</span><span>Toque em qualquer magia, talento, item ou condição para ler a regra</span></footer>
 <script src="app.js"></script><script src="regras.js"></script><script src="ficha-calc.js"></script><script src="sessao.js"></script></body></html>

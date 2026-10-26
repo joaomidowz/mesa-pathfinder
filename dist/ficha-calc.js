@@ -283,6 +283,57 @@
     return (entries || []).find(entry => entry && names.has(normalizeName(entry.name)) && wanted.some(category => normalizeName(entry.category).includes(category))) || null;
   }
 
+  // Subir de nível: o que a tabela da classe dá num nível ("Talento de bárbaro, talento de perícia, …"), separado em vagas
+  // de talento (classe, perícia, geral, ancestralidade), incremento de perícia, melhorias de atributo e o resto. A extração do
+  // PDF às vezes cola as palavras ("talentogeral"): compara sem espaço nem acento.
+  function levelGains(features) {
+    const slots = [], other = [];
+    let skillIncrease = false, attributeBoosts = false;
+    for (const piece of String(features ?? '').split(',').map(part => part.trim()).filter(Boolean)) {
+      const key = normalizeName(piece);
+      const slot = key.startsWith('talentodepericia') ? 'pericia' : key.startsWith('talentodeancestralidade') ? 'ancestralidade' : key.startsWith('talentogeral') ? 'geral' : key.startsWith('talentode') ? 'classe' : '';
+      if (key === 'talento' || key === 'talentode') continue; // sobra da linha cortada na extração do PDF (nível 20)
+      if (slot) { if (!slots.includes(slot)) slots.push(slot); }
+      else if (key.startsWith('incrementodepericia')) skillIncrease = true;
+      else if (key.startsWith('melhoriasdeatributo') || key.startsWith('melhoriadeatributo')) attributeBoosts = true;
+      else other.push(piece.charAt(0).toUpperCase() + piece.slice(1));
+    }
+    return { slots, skillIncrease, attributeBoosts, other };
+  }
+  // PV ganhos ao subir um nível: os da classe + Constituição (pelo menos 1).
+  function hpGain(hpPerLevel, con) { return Math.max(1, (toInt(hpPerLevel) ?? 0) + (toInt(con) ?? 0)); }
+  // PV de nível. extra.pvAte é o nível até onde os PV já estão na ficha; sem a marca vale o nível atual, porque a ficha
+  // convertida já traz os PV. extra.pvNiveis guarda o que o Somar pôs em cada nível, para o − desfazer só isso.
+  const sheetLevel = d => Math.min(20, Math.max(1, toCount(d.profile?.level) ?? 1));
+  function hpCountedTo(d) { return toInt(d.extra?.pvAte) ?? sheetLevel(d); }
+  // Somar: os PV de cada nível que falta, de pvAte + 1 até o atual. Devolve o total somado (0 se nada faltava).
+  function sumLevelHp(d, gain) {
+    const level = sheetLevel(d), from = hpCountedTo(d);
+    if (level <= from || !(gain > 0)) return 0;
+    const extra = d.extra ||= {}, levels = extra.pvNiveis ||= {};
+    for (let n = from + 1; n <= level; n++) levels[n] = String(gain);
+    const total = gain * (level - from);
+    d.stats.hpMax = String((toInt(d.stats.hpMax) ?? 0) + total);
+    d.stats.hpCurrent = String((toInt(d.stats.hpCurrent) ?? 0) + total);
+    extra.pvAte = String(level);
+    return total;
+  }
+  // Subir e descer gravam a marca antes de mudar o nível. Descer desfaz só a soma daquele nível: PV que já estavam na
+  // ficha continuam nela e não voltam a ser oferecidos.
+  function levelUp(d) { (d.extra ||= {}).pvAte = String(hpCountedTo(d)); d.profile.level = levelStep(d.profile.level, 1); }
+  function levelDown(d) {
+    const level = sheetLevel(d), extra = d.extra ||= {}, summed = toInt(extra.pvNiveis?.[level]);
+    extra.pvAte = String(hpCountedTo(d));
+    if (summed) {
+      const max = Math.max(0, (toInt(d.stats.hpMax) ?? 0) - summed);
+      d.stats.hpMax = String(max);
+      d.stats.hpCurrent = String(Math.min(max, Math.max(0, (toInt(d.stats.hpCurrent) ?? 0) - summed)));
+      delete extra.pvNiveis[level];
+      extra.pvAte = String(level - 1);
+    }
+    d.profile.level = levelStep(d.profile.level, -1);
+  }
+
   // Morrendo, Ferido, Condenado e Inconsciente (Remaster), gravados em conditions com os ids do catálogo.
   const conditionOf = (conditions, key) => (conditions || []).find(condition => condition && normalizeName(condition.name) === key);
   const conditionValue = (conditions, key) => { const found = conditionOf(conditions, key); return found ? Math.max(0, toInt(found.value) ?? 1) : 0; };
@@ -363,7 +414,7 @@
   window.FichaCalc = {
     toInt, toCount, normalizeName, formatModifier, mapSequence, hpState, applyDamage, applyHealing, applyTemp, slotRanks, dailyRest, spellKind, groupSpells, displayName, featName, conditionHasValue, formatNumber, sortSheets,
     stepValue, levelStep, normalizeBulk, bulkSummary, coinsTotal, parseInventoryLine, migrateInventory,
-    choicesFromFeats, VERSATILE_HERITAGES, matchCatalogName, choiceQuery, pickFeat,
+    choicesFromFeats, VERSATILE_HERITAGES, matchCatalogName, choiceQuery, pickFeat, levelGains, hpGain, hpCountedTo, sumLevelHp, levelUp, levelDown,
     dyingState, setConditionValue, setDying, afterDamage, afterHealing,
     profBonus, acFormula, shieldState, effectiveAc, armorFromEntry, shieldFromEntry,
   };

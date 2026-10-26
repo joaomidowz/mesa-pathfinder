@@ -1,7 +1,9 @@
-// Página do personagem: abas Ficha (tudo editável), Combate (a tela de sessão) e Pesquisa, com o topo fixo.
-// Lê e grava a mesma ficha do app.js (window.Mesa, docs/modelo-da-ficha.md): altera Mesa.data e chama Mesa.dirty().
-// Os campos editáveis ficam fixos no HTML (data-bind do app.js); aqui só se desenham as partes de exibição, para ninguém
-// perder o foco no meio da digitação.
+// Página do personagem, organizada pelo que se quer fazer: Combate (batalhar), Habilidades (consultar regras e o que o
+// personagem sabe), Evoluir (subir de nível), Itens e Ficha (identidade e anotações), com o topo fixo e o botão Salvar.
+// Lê e grava a mesma ficha do app.js (window.Mesa, docs/modelo-da-ficha.md): altera Mesa.data e chama Mesa.dirty(), que
+// só marca a ficha como não salva (ela vai para a nuvem no Salvar ou quando a página perde o foco).
+// Os campos editáveis ficam fixos no HTML (data-bind do app.js); aqui só se desenham as partes de exibição, e só quando o
+// HTML delas muda, para ninguém perder o foco nem sentir a página travar no meio da digitação.
 (() => {
   const { escapeHtml, bodyHtml, bookLink, metaLine, TYPE_LABELS, BOOK_NAMES } = window.Regras;
   const C = window.FichaCalc;
@@ -9,10 +11,10 @@
   const ruleDialog = document.getElementById('rule-dialog');
   const pickerDialog = document.getElementById('picker-dialog');
   const entryCache = new Map();
-  const catalog = { classes: [], ancestries: [], loaded: false };
-  let ruleToken = 0, pickerToken = 0, searchToken = 0, tab = 'ficha', invTab = 'carregavel';
+  const catalog = { classes: [], ancestries: [], classEntries: [], loaded: false };
+  let ruleToken = 0, pickerToken = 0, searchToken = 0, tab = 'combate', invTab = 'carregavel', conversionPending = false;
 
-  const TABS = ['ficha', 'combate', 'pesquisa'];
+  const TABS = ['combate', 'habilidades', 'evoluir', 'itens', 'ficha'];
   const ATTRIBUTES = [['str', 'Força'], ['dex', 'Destreza'], ['con', 'Constituição'], ['int', 'Inteligência'], ['wis', 'Sabedoria'], ['cha', 'Carisma']];
   const HP_LABELS = { ok: 'PV cheios', ferido: 'Com dano', critico: 'Em perigo', caido: '0 PV' };
   const TRADITIONS = { arcana: 'Arcana', divina: 'Divina', ocultista: 'Ocultista', primal: 'Primal' };
@@ -37,6 +39,11 @@
   const tile = (label, value, extra = '') => `<div class="tile ${extra}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>`;
   const counter = ({ label, value, dec, inc, extra = '' }) => `<div class="counter ${extra}"><span class="counter-label">${escapeHtml(label)}</span><button type="button" class="mini" data-action="${dec}" data-mutate aria-label="Diminuir ${escapeHtml(label)}">−</button><output>${escapeHtml(String(value))}</output><button type="button" class="mini" data-action="${inc}" data-mutate aria-label="Aumentar ${escapeHtml(label)}">+</button></div>`;
   const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  // Só troca o HTML quando ele mudou: redesenhar o que já está igual custa repintura e trava o celular.
+  function setHtml(el, html) { if (!el || el.__html === html) return false; el.innerHTML = html; el.__html = html; return true; }
+  // out(seletor).html = … desenha em todos os lugares com aquele seletor (a mesma parte pode estar em duas abas).
+  const out = selector => ({ set html(value) { root.querySelectorAll(selector).forEach(el => setHtml(el, value)); } });
+  const view = el => ({ set html(value) { setHtml(el, value); } });
 
   function getEntry(id) {
     if (!entryCache.has(id)) entryCache.set(id, window.Mesa.api('entries/' + encodeURIComponent(id)).catch(error => { entryCache.delete(id); throw error; }));
@@ -58,74 +65,87 @@
   function renderTop() {
     const d = data(), profile = d.profile || {}, stats = d.stats || {};
     const hp = C.hpState(stats), ac = C.effectiveAc({ stats, defense: d.defense || {} }), dying = C.dyingState(d.conditions || []);
-    q('[data-name]').textContent = profile.name || 'Personagem sem nome';
-    q('[data-subtitle]').textContent = [profile.className, [profile.ancestry, profile.heritage].filter(Boolean).join(' · ')].filter(Boolean).join(' · ') || 'Complete a identidade na Ficha.';
-    q('[data-level]').textContent = String(charLevel());
-    q('[data-top-vitals]').innerHTML = `<span class="top-hp" data-state="${hp.state}"><span class="top-label">PV</span><strong>${hp.current}</strong><span class="muted">/${hp.max ?? '—'}</span>${hp.temp ? `<span class="top-temp">+${hp.temp}</span>` : ''}<span class="top-bar"><span style="width:${hp.percent ?? 100}%"></span></span></span><span class="top-ac"><span class="top-label">CA</span><strong>${ac ? ac.total : '—'}</strong></span><span class="top-skulls">${[1, 2, 3, 4].map(n => `<span class="skull-icon ${n <= dying.dying ? 'on' : ''} ${n >= dying.limit ? 'fatal' : ''}">${SKULL_SVG}</span>`).join('')}</span>${dying.wounded ? `<span class="top-wounded">Ferido ${dying.wounded}</span>` : ''}${dying.dead ? '<span class="top-dead">Morto</span>' : ''}`;
-    q('[data-top-vitals]').setAttribute('aria-label', `PV ${hp.current} de ${hp.max ?? '—'}${hp.temp ? `, ${hp.temp} temporários` : ''}, CA ${ac ? ac.total : '—'}, Morrendo ${dying.dying}${dying.wounded ? `, Ferido ${dying.wounded}` : ''}. Abrir o Combate`);
+    const className = String(profile.className || '').trim(), name = profile.name || 'Personagem sem nome';
+    const subtitle = [className ? `${className} ${charLevel()}` : `Nível ${charLevel()}`, profile.ancestry].filter(Boolean).join(' · ');
+    if (q('[data-name]').textContent !== name) q('[data-name]').textContent = name;
+    if (q('[data-subtitle]').textContent !== subtitle) q('[data-subtitle]').textContent = subtitle;
+    out('[data-top-vitals]').html = `<span class="top-hp" data-state="${hp.state}"><span class="top-label">PV</span><strong>${hp.current}</strong><span class="muted">/${hp.max ?? '—'}</span>${hp.temp ? `<span class="top-temp">+${hp.temp}</span>` : ''}<span class="top-bar"><span style="width:${hp.percent ?? 100}%"></span></span></span><span class="top-ac"><span class="top-label">CA</span><strong>${ac ? ac.total : '—'}</strong></span><span class="top-skulls">${[1, 2, 3, 4].map(n => `<span class="skull-icon ${n <= dying.dying ? 'on' : ''} ${n >= dying.limit ? 'fatal' : ''}">${SKULL_SVG}</span>`).join('')}</span>${dying.wounded ? `<span class="top-wounded">Ferido ${dying.wounded}</span>` : ''}${dying.dead ? '<span class="top-dead">Morto</span>' : ''}`;
+    const label = `PV ${hp.current} de ${hp.max ?? '—'}${hp.temp ? `, ${hp.temp} temporários` : ''}, CA ${ac ? ac.total : '—'}, Morrendo ${dying.dying}${dying.wounded ? `, Ferido ${dying.wounded}` : ''}. Abrir o Combate`;
+    if (q('[data-top-vitals]').getAttribute('aria-label') !== label) q('[data-top-vitals]').setAttribute('aria-label', label);
     q('[data-readonly-chip]').hidden = !readOnly();
     root.classList.toggle('is-readonly', readOnly());
-    document.title = (profile.name || 'Personagem') + ' · Mesa Pathfinder';
+    if (document.title !== name + ' · Mesa Pathfinder') document.title = name + ' · Mesa Pathfinder';
   }
 
   function renderHp() {
     const hp = C.hpState(data().stats || {});
-    q('[data-hp-display]').innerHTML = `<div class="hp" data-state="${hp.state}"><div class="hp-numbers"><span class="hp-current">${hp.current}</span><span class="hp-max">/ ${hp.max ?? '—'} PV</span><span class="hp-state">${hp.max == null ? '' : HP_LABELS[hp.state]}</span></div><div class="hp-bar"><span style="width:${hp.percent ?? 100}%"></span></div></div>`;
-    q('[data-temp-counter]').innerHTML = counter({ label: 'Temporários', value: hp.temp, dec: 'temp-dec', inc: 'temp-inc' }) + '<span class="small muted">Não se somam: fica o maior.</span>';
+    out('[data-hp-display]').html = `<div class="hp" data-state="${hp.state}"><div class="hp-numbers"><span class="hp-current">${hp.current}</span><span class="hp-max">/ ${hp.max ?? '—'} PV</span><span class="hp-state">${hp.max == null ? '' : HP_LABELS[hp.state]}</span></div><div class="hp-bar"><span style="width:${hp.percent ?? 100}%"></span></div></div>`;
+    out('[data-temp-counter]').html = counter({ label: 'Temporários', value: hp.temp, dec: 'temp-dec', inc: 'temp-inc' }) + '<span class="small muted">Não se somam: fica o maior.</span>';
   }
 
   function renderAcCard() {
-    const d = data(), defense = d.defense || {}, ac = C.effectiveAc({ stats: d.stats || {}, defense });
-    const extra = C.toInt(defense.acBonus) ?? 0, shield = C.shieldState(defense.shield || {});
-    q('[data-ac-card]').innerHTML = `<div class="badge ac-badge">${ARMOR_SVG}<strong>${ac ? ac.total : '—'}</strong></div><div class="badge-label">CA</div><small class="badge-detail">${escapeHtml(ac ? ac.text : 'Preencha a CA na Ficha')}</small>${counter({ label: 'Adicional', value: signed(extra), dec: 'acb-dec', inc: 'acb-inc', extra: 'compact' })}${shield.active && extra > 0 ? '<small class="badge-hint">Escudo e cobertura não se somam: vale o maior.</small>' : ''}`;
+    const d = data(), ac = C.effectiveAc({ stats: d.stats || {}, defense: d.defense || {} });
+    const detail = !ac ? 'Preencha a CA em Evoluir' : ac.text !== String(ac.total) ? ac.text : '';
+    out('[data-ac-card]').html = `<div class="badge ac-badge">${ARMOR_SVG}<strong>${ac ? ac.total : '—'}</strong></div><div class="badge-label">CA</div>${detail ? `<small class="badge-detail">${escapeHtml(detail)}</small>` : ''}`;
   }
 
   function renderShield() {
-    const defense = data().defense || {}, s = C.shieldState(defense.shield || {});
-    const card = q('[data-shield-card]'), strip = q('[data-shield-strip]');
-    card.hidden = strip.hidden = !s.has;
-    if (!s.has) { card.innerHTML = strip.innerHTML = ''; return; }
+    const s = C.shieldState(data().defense?.shield || {}), card = q('[data-shield-card]');
+    card.hidden = !s.has;
+    if (!s.has) { setHtml(card, ''); return; }
     const status = s.destroyed ? 'Destruído' : s.broken ? 'Quebrado' : s.raised ? 'Erguido' : 'Abaixado';
     const hpText = s.hpMax != null ? `${s.hp}/${s.hpMax}` : String(s.hp ?? '—');
-    card.innerHTML = `<button type="button" class="badge shield-badge ${s.active ? 'on' : ''}" data-action="shield-raise" aria-pressed="${s.active}" aria-label="Escudo +${s.bonus}: ${status}. Tocar ergue ou abaixa" ${s.broken || s.destroyed || readOnly() ? 'disabled' : ''}>${SHIELD_SVG}<strong>+${s.bonus}</strong></button><div class="badge-label">Escudo</div><small class="badge-detail">${status} · PV ${hpText}</small>`;
+    view(card).html = `<button type="button" class="badge shield-badge ${s.active ? 'on' : ''}" data-action="shield-raise" aria-pressed="${s.active}" aria-label="Escudo +${s.bonus}: ${status}. Tocar ergue ou abaixa" ${s.broken || s.destroyed || readOnly() ? 'disabled' : ''}>${SHIELD_SVG}<strong>+${s.bonus}</strong></button><div class="badge-label">Escudo</div><small class="badge-detail">${status} · PV ${hpText}</small>`;
+  }
+
+  // Faixa do Combate: salvamentos à vista, CA adicional, controles do escudo e o aviso de carga.
+  function renderCombatStrip() {
+    const d = data(), stats = d.stats || {}, defense = d.defense || {}, s = C.shieldState(defense.shield || {});
+    const extra = C.toInt(defense.acBonus) ?? 0, sum = C.bulkSummary(d.items || [], { coins: d.inventory?.coins || {}, str: stats.str });
+    const save = (label, value) => `<div class="save-chip"><span>${label}</span><strong>${C.formatModifier(value)}</strong></div>`;
+    const hpText = s.hpMax != null ? `${s.hp}/${s.hpMax}` : String(s.hp ?? '—'), broken = s.destroyed ? 'Destruído' : s.broken ? 'Quebrado' : '';
     const cover = C.toInt(defense.shield?.cover);
-    strip.innerHTML = `<div class="strip-row">${counter({ label: 'PV do escudo', value: hpText, dec: 'shp-dec', inc: 'shp-inc' })}<span class="chip">Dureza <strong>${s.hardness ?? '—'}</strong></span><span class="chip">LQ <strong>${s.bt ?? '—'}</strong></span>${s.broken || s.destroyed ? `<span class="chip danger-chip">${status}: não soma na CA</span>` : ''}</div><p class="small muted">Toque no escudo para erguer ou abaixar; erguido vale até o começo do seu próximo turno.${cover ? ` Escudo de corpo: +${cover} ao Buscar Cobertura.` : ''}</p>`;
+    out('[data-combat-strip]').html = `<div class="save-chips">${save('Fortitude', stats.fort)}${save('Reflexos', stats.reflex)}${save('Vontade', stats.will)}</div>`
+      + `<div class="strip-row">${counter({ label: 'CA adicional', value: signed(extra), dec: 'acb-dec', inc: 'acb-inc' })}${s.active && extra > 0 ? '<span class="small accent">Escudo e cobertura não se somam: vale o maior.</span>' : ''}</div>`
+      + (s.has ? `<div class="strip-row">${counter({ label: 'PV do escudo', value: hpText, dec: 'shp-dec', inc: 'shp-inc' })}<span class="chip">Dureza <strong>${s.hardness ?? '—'}</strong></span><span class="chip">LQ <strong>${s.bt ?? '—'}</strong></span>${broken ? `<span class="chip danger-chip">${broken}: não soma na CA</span>` : ''}</div><p class="small muted" data-mutate>Toque no escudo para erguer ou abaixar; erguido vale até o começo do seu próximo turno.${cover ? ` Escudo de corpo: +${cover} ao Buscar Cobertura.` : ''}</p>` : '')
+      + (sum.state === 'ok' ? '' : `<p class="encumbered">${sum.state === 'sobrecarregado' ? 'Sobrecarregado: Desajeitado 1 e −3 m de deslocamento.' : 'Acima do máximo de Volume: não dá para carregar tudo.'}</p>`);
   }
 
   function renderPerception() {
-    q('[data-perception-card]').innerHTML = `<div class="badge perception-badge"><strong>${C.formatModifier(data().stats?.perception)}</strong></div><div class="badge-label">Percepção</div>`;
+    out('[data-perception-card]').html = `<div class="badge perception-badge"><strong>${C.formatModifier(data().stats?.perception)}</strong></div><div class="badge-label">Percepção</div>`;
   }
 
   function renderDying() {
     const d = data(), s = C.dyingState(d.conditions || []), hero = Math.max(0, Math.min(3, C.toInt(d.heroPoints) ?? 0));
     const skulls = [1, 2, 3, 4].map(n => `<button type="button" class="skull ${n <= s.dying ? 'on' : ''} ${n >= s.limit ? 'fatal' : ''}" data-action="dying" data-value="${n}" aria-pressed="${n <= s.dying}" aria-label="Morrendo ${n}${n >= s.limit ? ': morte' : ''}" ${lock()}>${SKULL_SVG}</button>`).join('');
     const state = s.dead ? '<strong class="danger">Morto</strong>' : s.dying ? `Morrendo ${s.dying}${s.unconscious ? ' · inconsciente' : ''}` : s.unconscious ? 'Estável e inconsciente' : 'Fora de perigo';
-    q('[data-dying-card]').innerHTML = `<div class="dying-grid"><div><div class="panel-head"><h2>Morrendo</h2><span class="small muted">${state}</span></div><div class="skulls">${skulls}</div><p class="small muted">${s.doomed ? `Condenado ${s.doomed}: morre em Morrendo ${s.limit}. ` : ''}Cair a 0 PV marca sozinho; toque numa caveira para ajustar.</p></div><div class="dying-side">${counter({ label: 'Ferido', value: s.wounded, dec: 'wounded-dec', inc: 'wounded-inc' })}<div class="hero-points"><span>Heroísmo</span><div class="pips">${[0, 1, 2].map(i => `<button type="button" class="pip ${i < hero ? '' : 'spent'}" data-action="hero" data-index="${i}" aria-label="Ponto de heroísmo ${i + 1}: ${i < hero ? 'disponível' : 'vazio'}" ${lock()}></button>`).join('')}</div></div>${counter({ label: 'Sorte', value: Math.max(0, C.toCount(d.luck) ?? 0), dec: 'luck-dec', inc: 'luck-inc' })}</div></div>`;
+    q('[data-dying-card]').classList.toggle('is-dying', s.dying > 0 || s.dead);
+    out('[data-dying-card]').html = `<div class="dying-grid"><div><div class="panel-head"><h2>Morrendo</h2><span class="small muted">${state}</span></div><div class="skulls">${skulls}</div>${s.doomed ? `<p class="small muted">Condenado ${s.doomed}: morre em Morrendo ${s.limit}.</p>` : ''}<p class="small muted" data-mutate>Cair a 0 PV marca sozinho; toque numa caveira para ajustar.</p></div><div class="dying-side">${counter({ label: 'Ferido', value: s.wounded, dec: 'wounded-dec', inc: 'wounded-inc' })}<div class="hero-points"><span>Heroísmo</span><div class="pips">${[0, 1, 2].map(i => `<button type="button" class="pip ${i < hero ? '' : 'spent'}" data-action="hero" data-index="${i}" aria-label="Ponto de heroísmo ${i + 1}: ${i < hero ? 'disponível' : 'vazio'}" ${lock()}></button>`).join('')}</div></div>${counter({ label: 'Sorte', value: Math.max(0, C.toCount(d.luck) ?? 0), dec: 'luck-dec', inc: 'luck-inc' })}</div></div>`;
   }
 
   function renderDefenses() {
     const stats = data().stats || {}, speed = String(stats.speed ?? '').trim();
-    q('[data-defenses]').innerHTML = `<div class="panel-head"><h2>Salvamentos</h2></div><div class="tiles">${tile('Fortitude', C.formatModifier(stats.fort))}${tile('Reflexos', C.formatModifier(stats.reflex))}${tile('Vontade', C.formatModifier(stats.will))}${tile('Deslocamento', speed ? speed + ' m' : '')}${tile('CD de classe', stats.classDc)}</div><h3 class="group-title section-space">Atributos</h3><div class="tiles">${ATTRIBUTES.map(([key, label]) => tile(label, C.formatModifier(stats[key]))).join('')}</div>`;
+    out('[data-defenses]').html = `<div class="panel-head"><h2>Atributos</h2></div><div class="tiles">${ATTRIBUTES.map(([key, label]) => tile(label, C.formatModifier(stats[key]))).join('')}${tile('Deslocamento', speed ? speed + ' m' : '')}${tile('CD de classe', stats.classDc)}</div>`;
   }
 
   function renderConditions() {
     const list = (data().conditions || []).map((condition, index) => ({ ...condition, index })).filter(condition => !OWN_CONTROL.has(C.normalizeName(condition.name)));
-    q('[data-conditions]').innerHTML = `<div class="panel-head"><div><h2>Condições</h2><p>Toque no nome para ler a regra.</p></div><button type="button" class="btn" data-action="condition-add" data-mutate>+ Condição</button></div>
+    out('[data-conditions]').html = `<div class="panel-head"><div><h2>Condições</h2><p>Toque no nome para ler a regra.</p></div><button type="button" class="btn" data-action="condition-add" data-mutate>+ Condição</button></div>
       <div class="condition-list">${list.length ? list.map(condition => `<div class="condition"><button type="button" class="condition-name" data-action="condition-open" data-index="${condition.index}">${escapeHtml(condition.name)}${condition.value ? ` <strong>${escapeHtml(condition.value)}</strong>` : ''}</button>${C.conditionHasValue(condition.name) ? `<button type="button" class="mini" data-action="condition-dec" data-index="${condition.index}" data-mutate aria-label="Diminuir ${escapeHtml(condition.name)}">−</button><button type="button" class="mini" data-action="condition-inc" data-index="${condition.index}" data-mutate aria-label="Aumentar ${escapeHtml(condition.name)}">+</button>` : ''}<button type="button" class="mini" data-action="condition-remove" data-index="${condition.index}" data-mutate aria-label="Tirar ${escapeHtml(condition.name)}">×</button></div>`).join('') : '<p class="empty">Nenhuma condição ativa.</p>'}</div>`;
   }
 
   function renderStrikes() {
     const attacks = data().attacks || [];
-    q('[data-strikes]').innerHTML = `<div class="panel-head"><div><h2>Golpes</h2><p>Bônus do 1º, 2º e 3º ataque no turno, com a penalidade de ataques múltiplos.</p></div></div>${attacks.length ? attacks.map(attack => {
+    out('[data-strikes]').html = `<div class="panel-head"><div><h2>Golpes</h2><p>Bônus do 1º, 2º e 3º ataque no turno, com a penalidade de ataques múltiplos.</p></div></div>${attacks.length ? attacks.map(attack => {
       const sequence = C.mapSequence(attack.bonus, attack.traits);
       return `<article class="strike"><div class="strike-head"><h3>${escapeHtml(attack.name || 'Golpe')}</h3>${sequence ? `<div class="strike-map">${sequence.map((value, i) => `<span class="${i ? 'later' : ''}">${value}</span>`).join('<span class="sep">/</span>')}</div>` : ''}</div>${attack.damage ? `<p class="strike-damage">${escapeHtml(attack.damage)}</p>` : ''}${attack.traits ? `<p class="small muted">${escapeHtml(attack.traits)}</p>` : ''}${attack.notes ? `<p class="small">${escapeHtml(attack.notes)}</p>` : ''}</article>`;
-    }).join('') : '<p class="empty">Nenhum golpe ainda. Cadastre armas e ataques na <a class="accent" href="#ficha">Ficha</a>.</p>'}`;
+    }).join('') : '<p class="empty">Nenhum golpe ainda. Cadastre em <strong>Editar armas e ataques</strong>, logo abaixo.</p>'}`;
   }
 
   function renderSkills() {
     const skills = data().skills || {};
     const rows = Object.entries(window.Mesa.skillInfo).map(([key, [name]]) => ({ key, name, value: skills[key] })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-    q('[data-skill-list]').innerHTML = `<div class="panel-head"><div><h2>Perícias</h2><p>Toque para ver para que serve cada uma.</p></div></div><div class="skill-grid">${rows.map(row => `<button type="button" class="skill ${(C.toInt(row.value) ?? 0) <= 0 ? 'low' : ''}" data-action="skill" data-key="${row.key}"><span>${escapeHtml(row.name)}</span><strong>${C.formatModifier(row.value)}</strong></button>`).join('')}</div>`;
+    out('[data-skill-list]').html = `<div class="panel-head"><div><h2>Perícias</h2><p>Toque para ver para que serve cada uma.</p></div></div><div class="skill-grid">${rows.map(row => `<button type="button" class="skill ${(C.toInt(row.value) ?? 0) <= 0 ? 'low' : ''}" data-action="skill" data-key="${row.key}"><span>${escapeHtml(row.name)}</span><strong>${C.formatModifier(row.value)}</strong></button>`).join('')}</div>`;
   }
 
   function spellList(spells) {
@@ -141,8 +161,8 @@
     const box = q('[data-spells-use]');
     const hasCasting = summary || casting.attack || casting.dc || ranks.length || focusMax || spells.length;
     box.hidden = !hasCasting;
-    if (!hasCasting) { box.innerHTML = ''; return; }
-    box.innerHTML = `<div class="panel-head"><div><h2>Magias</h2><p>${escapeHtml(summary || 'Toque numa magia para ler o texto completo.')}</p></div></div>
+    if (!hasCasting) { view(box).html = ''; return; }
+    view(box).html = `<div class="panel-head"><div><h2>Magias</h2><p>${escapeHtml(summary || 'Toque numa magia para ler o texto completo.')}</p></div></div>
       ${casting.attack || casting.dc ? `<div class="tiles">${tile('Ataque de magia', C.formatModifier(casting.attack))}${tile('CD de magia', casting.dc, 'accent')}</div>` : ''}
       ${ranks.length || focusMax ? `<div class="slots">${ranks.map(slot => `<div class="slot-row"><span class="slot-label">${slot.rank}º</span><div class="pips">${pips(slot.max, i => i >= slot.used, 'slot', i => `Espaço ${i + 1} de ${slot.rank}º ranque: ${i < slot.used ? 'usado' : 'livre'}`, `data-rank="${slot.rank}"`)}</div><span class="small muted">${plural(slot.max - slot.used, 'livre', 'livres')}</span></div>`).join('')}${focusMax ? `<div class="slot-row"><span class="slot-label">Foco</span><div class="pips">${pips(focusMax, i => i < focusNow, 'focus', i => `Ponto de foco ${i + 1}: ${i < focusNow ? 'disponível' : 'gasto'}`)}</div><span class="small muted">${focusNow}/${focusMax}</span></div>` : ''}<div class="head-actions section-space"><button type="button" class="btn" data-action="rest" data-mutate>Descanso diário</button></div></div>` : ''}
       ${spells.length ? spellList(spells) : ''}`;
@@ -150,31 +170,33 @@
 
   function renderSpellBook() {
     const spells = data().spells || [];
-    q('[data-spell-book]').innerHTML = spells.length ? spellList(spells) : `<p class="empty">${readOnly() ? 'Sem magias nesta ficha.' : 'Nenhuma magia ainda. Use + Magia para trazer do catálogo.'}</p>`;
+    out('[data-spell-book]').html = spells.length ? spellList(spells) : `<p class="empty">${readOnly() ? 'Sem magias nesta ficha.' : 'Nenhuma magia ainda. Use + Magia para trazer do catálogo.'}</p>`;
   }
 
   // Combate: talentos (Escolhas) e habilidades, para ler a regra no meio do turno.
   function renderFeats() {
     const d = data(), choices = (d.choices || []).map((choice, index) => ({ ...choice, index })).filter(choice => String(choice.name || '').trim());
-    const abilities = Object.entries(d.abilities || {});
-    q('[data-feat-list]').innerHTML = `<div class="panel-head"><div><h2>Talentos e habilidades</h2><p>Toque para ler a regra do livro ou a sua anotação.</p></div></div>${choices.length || abilities.length ? `<div class="row-list">${choices.length ? `<h3 class="group-title">Escolhas</h3>${choices.map(choice => `<button type="button" class="row-button" data-action="choice-open" data-index="${choice.index}"><span>${escapeHtml(C.displayName(choice.name))}</span><small>${escapeHtml(SLOT_SHORT[choice.slot] || '')}${choice.level ? ' · nível ' + escapeHtml(choice.level) : ''}</small></button>`).join('')}` : ''}${abilities.length ? `<h3 class="group-title">Habilidades e ações</h3>${abilities.map(([key, ability]) => `<button type="button" class="row-button" data-action="ability-open" data-key="${escapeHtml(key)}"><span>${escapeHtml(ability.name || 'Habilidade')}</span>${ability.source ? `<small>${escapeHtml(ability.source)}</small>` : ''}</button>`).join('')}` : ''}</div>` : '<p class="empty">Nada anotado ainda. Escolhas e habilidades ficam na <a class="accent" href="#ficha">Ficha</a>.</p>'}`;
+    // Habilidade antiga com o mesmo nome de uma escolha (a conversão trouxe as duas) não aparece duas vezes.
+    const chosen = new Set(choices.map(choice => C.normalizeName(C.featName(choice.name))));
+    const abilities = Object.entries(d.abilities || {}).filter(([, ability]) => !chosen.has(C.normalizeName(C.featName(ability.name || ''))));
+    out('[data-feat-list]').html = `<div class="panel-head"><div><h2>Talentos e habilidades</h2><p>Toque para ler a regra do livro ou a sua anotação.</p></div></div>${choices.length || abilities.length ? `<div class="row-list">${choices.length ? `<h3 class="group-title">Escolhas</h3>${choices.map(choice => `<button type="button" class="row-button" data-action="choice-open" data-index="${choice.index}"><span>${escapeHtml(C.displayName(choice.name))}</span><small>${escapeHtml(SLOT_SHORT[choice.slot] || '')}${choice.level ? ' · nível ' + escapeHtml(choice.level) : ''}</small></button>`).join('')}` : ''}${abilities.length ? `<h3 class="group-title">Habilidades e ações</h3>${abilities.map(([key, ability]) => `<button type="button" class="row-button" data-action="ability-open" data-key="${escapeHtml(key)}"><span>${escapeHtml(ability.name || 'Habilidade')}</span>${ability.source ? `<small>${escapeHtml(ability.source)}</small>` : ''}</button>`).join('')}` : ''}</div>` : '<p class="empty">Nada anotado ainda. Os talentos entram em <a class="accent" href="#evoluir">Evoluir</a> e as habilidades em <strong>Editar habilidades e ações</strong>.</p>'}`;
   }
 
   // Ficha: a conta do livro confere a CA; só o botão Usar troca a CA da ficha.
   function renderAcCheck() {
     const d = data(), f = C.acFormula({ stats: d.stats || {}, profile: d.profile || {}, defense: d.defense || {} });
     q('[data-formula="dex"]').textContent = f.dex == null ? '—' : C.formatModifier(f.dex);
-    q('[data-formula="prof"]').innerHTML = f.complete ? `${C.formatModifier(f.prof)}<sup>${f.rank === 'U' ? '—' : escapeHtml(f.rank)}</sup>` : '—';
+    out('[data-formula="prof"]').html = f.complete ? `${C.formatModifier(f.prof)}<sup>${f.rank === 'U' ? '—' : escapeHtml(f.rank)}</sup>` : '—';
     const box = q('[data-ac-check]'), sheet = C.toInt(d.stats?.ac);
-    if (!f.complete) { box.innerHTML = 'Escolha a armadura usada e a proficiência nela para conferir a CA.'; return; }
-    box.innerHTML = `Conta do livro: <strong>${f.total}</strong>` + (sheet === f.total ? ' · confere com a ficha.' : ` · a ficha diz ${sheet ?? '—'} <button type="button" class="btn small-btn" data-action="ac-use" data-mutate>Usar ${f.total}</button>`);
+    if (!f.complete) { view(box).html = 'Escolha a armadura usada e a proficiência nela para conferir a CA.'; return; }
+    view(box).html = `Conta do livro: <strong>${f.total}</strong>` + (sheet === f.total ? ' · confere com a ficha.' : ` · a ficha diz ${sheet ?? '—'} <button type="button" class="btn small-btn" data-action="ac-use" data-mutate>Usar ${f.total}</button>`);
   }
 
   function renderChoices() {
     const list = (data().choices || []).map((choice, index) => ({ ...choice, index }));
     const groups = new Map();
     for (const choice of list) { const level = C.toCount(choice.level) ?? 0; if (!groups.has(level)) groups.set(level, []); groups.get(level).push(choice); }
-    q('[data-choices]').innerHTML = list.length ? [...groups.keys()].sort((a, b) => a - b).map(level => `<h3 class="group-title">${level ? 'Nível ' + level : 'Sem nível'}</h3>${groups.get(level).map(choice => `<div class="choice-row"><button type="button" class="row-button" data-action="choice-open" data-index="${choice.index}"><span>${escapeHtml(C.displayName(choice.name) || 'Escolha sem nome')}</span><small>${escapeHtml(SLOT_SHORT[choice.slot] || choice.slot || '')}${choice.manual ? ' <span class="seal">fora dos livros</span>' : ''}</small></button><button type="button" class="info-button" data-action="choice-swap" data-index="${choice.index}" data-mutate>Trocar</button><button type="button" class="mini" data-action="choice-remove" data-index="${choice.index}" data-mutate aria-label="Remover ${escapeHtml(choice.name)}">×</button></div>`).join('')}`).join('') : `<p class="empty">${readOnly() ? 'Nenhuma escolha nesta ficha.' : 'Nenhuma escolha ainda. Escolha a vaga e o nível e toque em + Escolha.'}</p>`;
+    out('[data-choices]').html = list.length ? [...groups.keys()].sort((a, b) => a - b).map(level => `<h3 class="group-title">${level ? 'Nível ' + level : 'Sem nível'}</h3>${groups.get(level).map(choice => `<div class="choice-row"><button type="button" class="row-button" data-action="choice-open" data-index="${choice.index}"><span>${escapeHtml(C.displayName(choice.name) || 'Escolha sem nome')}</span><small>${escapeHtml(SLOT_SHORT[choice.slot] || choice.slot || '')}${choice.manual ? ' <span class="seal">fora dos livros</span>' : ''}</small></button><button type="button" class="info-button" data-action="choice-swap" data-index="${choice.index}" data-mutate>Trocar</button><button type="button" class="mini" data-action="choice-remove" data-index="${choice.index}" data-mutate aria-label="Remover ${escapeHtml(choice.name)}">×</button></div>`).join('')}`).join('') : `<p class="empty">${readOnly() ? 'Nenhuma escolha nesta ficha.' : 'Nenhuma escolha ainda. Escolha a vaga e o nível e toque em + Escolha.'}</p>`;
   }
 
   function choiceHint(slot) {
@@ -183,10 +205,13 @@
     return 'Ancestralidade não reconhecida em Identidade: confira o nome, ou anote à mão (fica marcada para o mestre).';
   }
 
+  let choiceFormLevel = 0;
   function renderChoiceForm() {
-    const slot = q('[data-choice-slot]'), levelSelect = q('[data-choice-level]'), max = charLevel(), current = levelSelect.value;
-    if (levelSelect.options.length !== max) levelSelect.innerHTML = Array.from({ length: max }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
-    levelSelect.value = slot.value === 'biografia' ? '1' : current && Number(current) <= max ? current : String(max);
+    const slot = q('[data-choice-slot]'), levelSelect = q('[data-choice-level]'), max = charLevel();
+    // Subiu ou desceu de nível: a vaga nova passa a ser a do nível atual.
+    if (max !== choiceFormLevel) { levelSelect.innerHTML = Array.from({ length: max }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join(''); levelSelect.value = String(max); choiceFormLevel = max; }
+    if (slot.value === 'biografia') levelSelect.value = '1';
+    else if (!levelSelect.value || Number(levelSelect.value) > max) levelSelect.value = String(max);
     levelSelect.disabled = readOnly() || slot.value === 'biografia';
     const query = C.choiceQuery({ slot: slot.value, level: levelSelect.value }, data().profile || {}, catalog);
     q('[data-choice-hint]').textContent = query ? 'Lista para: ' + query.label + '.' : choiceHint(slot.value);
@@ -202,21 +227,21 @@
     const items = data().items || [];
     const counts = Object.fromEntries(SECTIONS.map(([key]) => [key, 0]));
     items.forEach(item => counts[sectionOf(item)]++);
-    q('[data-inv-tabs]').innerHTML = SECTIONS.map(([key, label]) => `<button type="button" role="tab" aria-selected="${key === invTab}" data-action="inv-tab" data-section="${key}">${label} <span class="count">${counts[key]}</span></button>`).join('');
+    out('[data-inv-tabs]').html = SECTIONS.map(([key, label]) => `<button type="button" role="tab" aria-selected="${key === invTab}" data-action="inv-tab" data-section="${key}">${label} <span class="count">${counts[key]}</span></button>`).join('');
     const rows = items.map((item, index) => ({ item, index })).filter(({ item }) => sectionOf(item) === invTab);
     const body = q('[data-inv-body]');
-    body.innerHTML = rows.length ? `<div class="inv-head" aria-hidden="true"><span>Item</span><span>Qtd</span><span>Volume</span></div>${rows.map(({ item, index }) => {
+    const html = rows.length ? `<div class="inv-head" aria-hidden="true"><span>Item</span><span>Qtd</span><span>Volume</span></div>${rows.map(({ item, index }) => {
       const name = C.displayName(item.name) || 'Item', extra = [item.invested ? 'investido' : '', item.notes].filter(Boolean).join(' · ');
       return `<div class="inv-row"><button type="button" class="inv-name" data-action="item-open" data-index="${index}"><span>${escapeHtml(name)}</span>${extra ? `<small>${escapeHtml(extra)}</small>` : ''}</button><div class="stepper"><button type="button" class="mini" data-action="qty-dec" data-index="${index}" data-mutate aria-label="Menos ${escapeHtml(name)}">−</button><input class="qty" data-bind="items.${index}.qty" inputmode="numeric" aria-label="Quantidade de ${escapeHtml(name)}"><button type="button" class="mini" data-action="qty-inc" data-index="${index}" data-mutate aria-label="Mais ${escapeHtml(name)}">+</button></div><select class="bulk" data-bind="items.${index}.bulk" aria-label="Volume de ${escapeHtml(name)}">${bulkOptions(item.bulk)}</select></div>`;
     }).join('')}` : `<p class="empty">${readOnly() ? 'Nada nesta aba.' : 'Nada nesta aba ainda. Use + Item para trazer do catálogo ou anotar à mão.'}</p>`;
-    window.Mesa.bindAll(body);
+    if (setHtml(body, html)) window.Mesa.bindAll(body);
     renderTotals();
   }
 
   function renderTotals() {
     const d = data(), sum = C.bulkSummary(d.items || [], { coins: d.inventory?.coins || {}, str: d.stats?.str });
     const state = { sobrecarregado: ' · <strong class="accent">Sobrecarregado</strong>: Desajeitado 1 e −3 m de deslocamento', 'acima-do-maximo': ' · <strong class="danger">Acima do máximo</strong>: não dá para carregar tudo' }[sum.state] || '';
-    q('[data-bulk-total]').innerHTML = `Volume <strong>${sum.bulk}</strong>${sum.light ? ` e ${sum.light} L` : ''} · sobrecarregado acima de ${sum.limit} · máximo ${sum.max}${sum.coinBulk ? ` · moedas contam ${sum.coinBulk}` : ''}${state}${sum.unknown ? ` · <span class="accent">${plural(sum.unknown, 'item', 'itens')} com Volume "?"</span>` : ''}`;
+    out('[data-bulk-total]').html = `Volume <strong>${sum.bulk}</strong>${sum.light ? ` e ${sum.light} L` : ''} · sobrecarregado acima de ${sum.limit} · máximo ${sum.max}${sum.coinBulk ? ` · moedas contam ${sum.coinBulk}` : ''}${state}${sum.unknown ? ` · <span class="accent">${plural(sum.unknown, 'item', 'itens')} com Volume "?"</span>` : ''}`;
     const coins = C.coinsTotal(d.inventory?.coins || {});
     const po = coins.copper % 100 === 0 ? String(coins.copper / 100) : C.formatNumber((coins.copper / 100).toFixed(2));
     q('[data-coins-total]').textContent = coins.count ? `Total: ${po} PO em ${plural(coins.count, 'moeda', 'moedas')}.` : 'Sem moedas.';
@@ -226,21 +251,83 @@
     const inventory = data().inventory || {};
     const parts = [['Carregados', inventory.carried], ['Consumíveis', inventory.consumables], ['Equipados', inventory.equipped], ['Riqueza', inventory.wealth]].filter(([, value]) => String(value || '').trim());
     q('[data-legacy]').hidden = !parts.length;
-    q('[data-legacy-body]').innerHTML = parts.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
+    out('[data-legacy-body]').html = parts.map(([label, value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
   }
 
-  const PARTS = { top: renderTop, hp: renderHp, ac: renderAcCard, shield: renderShield, perception: renderPerception, dying: renderDying, defenses: renderDefenses, conditions: renderConditions, strikes: renderStrikes, skills: renderSkills, spellsUse: renderSpellsUse, feats: renderFeats, acCheck: renderAcCheck, choices: renderChoices, choiceForm: renderChoiceForm, spellBook: renderSpellBook, inventory: renderInventory, totals: renderTotals, legacy: renderLegacy };
-  const TAB_PARTS = { ficha: ['acCheck', 'choices', 'choiceForm', 'spellBook', 'inventory', 'legacy'], combate: ['hp', 'ac', 'shield', 'perception', 'dying', 'defenses', 'conditions', 'strikes', 'skills', 'spellsUse', 'feats'], pesquisa: [] };
-  const ALL_PARTS = ['top', ...TAB_PARTS.ficha, ...TAB_PARTS.combate];
+  // Magias para consultar (aba Habilidades): ataque e CD, e a lista que abre a regra.
+  function renderSpellRead() {
+    const d = data(), casting = d.spellcasting || {}, spells = d.spells || [], box = q('[data-spell-read]');
+    box.hidden = !spells.length;
+    if (!spells.length) { setHtml(box, ''); return; }
+    const summary = [TRADITIONS[casting.tradition] || casting.tradition, casting.kind].filter(Boolean).join(' · ');
+    view(box).html = `<div class="panel-head"><div><h2>Magias</h2><p>${escapeHtml(summary || 'Toque numa magia para ler o texto completo.')}</p></div></div>${casting.attack || casting.dc ? `<div class="tiles">${tile('Ataque de magia', C.formatModifier(casting.attack))}${tile('CD de magia', casting.dc, 'accent')}</div>` : ''}<div class="section-space">${spellList(spells)}</div>`;
+  }
+
+  // --- Subir de nível: a tabela da classe no catálogo diz o que cada nível dá; os atalhos levam a cada escolha ---
+  const classInfo = { key: '', status: 'idle', name: '', hpPerLevel: null, progression: [] };
+  async function loadClassInfo() {
+    const className = data().profile?.className || '', key = C.normalizeName(className);
+    if (classInfo.key === key && classInfo.status !== 'idle') return;
+    Object.assign(classInfo, { key, status: 'loading', name: '', hpPerLevel: null, progression: [] });
+    if (!catalog.loaded) { classInfo.status = 'idle'; return; }
+    const match = C.matchCatalogName(className, catalog.classEntries.map(entry => C.displayName(entry.name)));
+    const entry = match && catalog.classEntries.find(item => C.displayName(item.name) === match);
+    if (!entry) { classInfo.status = 'missing'; draw(['levelCard']); return; }
+    try {
+      const full = await getEntry(entry.id);
+      if (classInfo.key !== key) return;
+      Object.assign(classInfo, { status: 'ok', name: C.displayName(full.name), hpPerLevel: full.data?.hpPerLevel ?? null, progression: full.data?.progression || [] });
+    } catch { if (classInfo.key !== key) return; classInfo.status = 'error'; }
+    draw(['levelCard']);
+  }
+  const gainsAt = level => classInfo.progression.find(row => Number(row.level) === level)?.features || '';
+  const SLOT_GAIN = { classe: 'Talento de classe', pericia: 'Talento de perícia', geral: 'Talento geral', ancestralidade: 'Talento de ancestralidade' };
+  function renderLevelCard() {
+    const d = data(), level = charLevel(), choices = d.choices || [];
+    const head = `<div class="level-head"><div class="level-now"><span class="eyebrow">Nível</span><strong>${level}</strong></div><div class="level-actions" data-mutate><button type="button" class="mini" data-action="level-dec" aria-label="Descer um nível" ${level <= 1 ? 'disabled' : ''}>−</button><button type="button" class="btn primary" data-action="level-inc" ${level >= 20 ? 'disabled' : ''}>${level >= 20 ? 'Nível máximo' : `Subir para o nível ${level + 1}`}</button></div></div>`;
+    let body = '';
+    if (classInfo.status === 'ok') {
+      const gains = C.levelGains(gainsAt(level)), next = gainsAt(level + 1);
+      const rows = gains.slots.map(slot => {
+        const done = choices.filter(choice => choice.slot === slot && String(choice.level) === String(level));
+        return `<li class="gain"><span class="gain-name">${SLOT_GAIN[slot]}</span>${done.length ? `<span class="gain-done">✓ ${escapeHtml(done.map(choice => C.displayName(choice.name)).join(', '))}</span>` : readOnly() ? '<span class="gain-pending">a escolher</span>' : `<button type="button" class="btn small-btn" data-action="gain-choice" data-slot="${slot}" data-level="${level}">Escolher</button>`}</li>`;
+      });
+      if (gains.skillIncrease) rows.push('<li class="gain"><span class="gain-name">Incremento de perícia</span><button type="button" class="btn ghost small-btn" data-action="jump" data-target="evoluir-pericias">Perícias</button></li>');
+      if (gains.attributeBoosts) rows.push('<li class="gain"><span class="gain-name">Melhorias de atributo</span><button type="button" class="btn ghost small-btn" data-action="jump" data-target="evoluir-atributos">Atributos</button></li>');
+      for (const feature of gains.other) rows.push(`<li class="gain other"><span class="gain-name">${escapeHtml(feature)}</span></li>`);
+      // O Somar aparece quando a ficha passou do nível até onde os PV já foram contados (extra.pvAte; fichas convertidas já
+      // trazem os PV do nível que têm) e soma de uma vez todos os níveis que faltam.
+      const hp = level > 1 && classInfo.hpPerLevel != null ? C.hpGain(classInfo.hpPerLevel, d.stats?.con) : null, summed = d.extra?.pvNiveis?.[level];
+      const missing = level - C.hpCountedTo(d), hpMax = C.toInt(d.stats?.hpMax) ?? 0, first = level - missing + 1;
+      const sumLabel = missing > 1 ? `Somar +${hp * missing} dos níveis ${first} ${missing === 2 ? 'e' : 'a'} ${level}` : `Somar +${hp}`;
+      const hpLine = hp == null ? '' : `<div class="hp-gain"><span>PV por nível: ${classInfo.hpPerLevel} da classe ${signed(C.toInt(d.stats?.con) ?? 0)} de Constituição = <strong>+${hp}</strong></span>${summed ? `<span class="gain-done">✓ +${escapeHtml(summed)} somados neste nível</span>` : missing > 0 ? `<button type="button" class="btn small-btn" data-action="hp-gain" data-mutate>${sumLabel} (PV máx ${hpMax} → ${hpMax + hp * missing})</button>` : ''}</div>`;
+      body = `<h3 class="group-title">O que o nível ${level} dá (${escapeHtml(classInfo.name)})</h3><ul class="gain-list">${rows.join('') || '<li class="gain other"><span class="gain-name">Nada novo na tabela da classe.</span></li>'}</ul>${hpLine}${next ? `<p class="small muted section-space">No nível ${level + 1}: ${escapeHtml(next)}.</p>` : ''}`;
+    } else if (classInfo.status === 'missing') body = String(d.profile?.className || '').trim() ? `<p class="small muted">${escapeHtml(d.profile.className)} não está nos livros: confira o que o nível dá no seu livro e anote nas Escolhas (fica marcado para o mestre).</p>` : '<p class="small muted">Preencha a classe na aba Ficha para ver o que cada nível dá.</p>';
+    else if (classInfo.status === 'error') body = '<p class="small muted">Não deu para ler a tabela da classe agora. Recarregue a página para tentar de novo.</p>';
+    else body = '<p class="small muted">Lendo a tabela da classe nos livros…</p>';
+    out('[data-level-card]').html = head + body;
+  }
+
+  const PARTS = { top: renderTop, hp: renderHp, ac: renderAcCard, shield: renderShield, perception: renderPerception, combatStrip: renderCombatStrip, dying: renderDying, defenses: renderDefenses, conditions: renderConditions, strikes: renderStrikes, skills: renderSkills, spellsUse: renderSpellsUse, feats: renderFeats, spellRead: renderSpellRead, levelCard: renderLevelCard, acCheck: renderAcCheck, choices: renderChoices, choiceForm: renderChoiceForm, spellBook: renderSpellBook, inventory: renderInventory, totals: renderTotals, legacy: renderLegacy };
+  const TAB_PARTS = {
+    combate: ['hp', 'ac', 'shield', 'perception', 'combatStrip', 'strikes', 'conditions', 'dying', 'spellsUse', 'skills', 'defenses'],
+    habilidades: ['feats', 'spellRead', 'skills'],
+    evoluir: ['levelCard', 'choices', 'choiceForm', 'acCheck', 'spellBook'],
+    itens: ['inventory', 'legacy'],
+    ficha: [],
+  };
+  const ALL_PARTS = ['top', ...new Set(Object.values(TAB_PARTS).flat())];
 
   // Redesenhar troca elementos: devolve o foco (e o cursor) ao campo de mesmo data-bind, se ele foi recriado.
+  const ACTION_KEYS = ['action', 'index', 'slot', 'level', 'value', 'tab', 'section', 'key'];
+  const actionId = el => ACTION_KEYS.map(name => el.dataset[name] ?? '').join('|');
   function keepFocus(fn) {
-    const active = document.activeElement, key = active?.dataset?.bind;
+    const active = document.activeElement, key = active?.dataset?.bind, action = !key && active?.dataset?.action ? actionId(active) : '';
     let start = null, end = null;
     try { start = active?.selectionStart ?? null; end = active?.selectionEnd ?? null; } catch { /* campo sem seleção */ }
     fn();
-    if (!key || (active && document.contains(active))) return;
-    const next = [...root.querySelectorAll('[data-bind]')].find(el => el.dataset.bind === key);
+    if ((!key && !action) || (active && document.contains(active))) return;
+    const next = key ? [...root.querySelectorAll('[data-bind]')].find(el => el.dataset.bind === key) : [...root.querySelectorAll('[data-action]')].find(el => actionId(el) === action);
     if (!next) return;
     next.focus();
     try { if (start != null) next.setSelectionRange(start, end); } catch { /* select não tem cursor */ }
@@ -269,18 +356,21 @@
   }
 
   // --- Abas ---
+  // Endereços antigos: #pesquisa virou a aba Habilidades.
+  const TAB_ALIASES = { pesquisa: 'habilidades' };
+  const tabName = value => { const name = TAB_ALIASES[value] || value; return TABS.includes(name) ? name : ''; };
   function readTab() {
-    const hash = location.hash.slice(1);
-    if (TABS.includes(hash)) return hash;
-    try { const saved = localStorage.getItem('mesa-aba'); if (TABS.includes(saved)) return saved; } catch { /* sem memória do aparelho */ }
-    return 'ficha';
+    const fromHash = tabName(location.hash.slice(1));
+    if (fromHash) return fromHash;
+    try { const saved = tabName(localStorage.getItem('mesa-aba-v2')); if (saved) return saved; } catch { /* sem memória do aparelho */ }
+    return 'combate';
   }
   function showTab(next, { scroll = false } = {}) {
-    tab = TABS.includes(next) ? next : 'ficha';
+    tab = tabName(next) || 'combate';
     root.querySelectorAll('[data-tab]').forEach(button => { const on = button.dataset.tab === tab; button.setAttribute('aria-selected', String(on)); button.tabIndex = on ? 0 : -1; });
     root.querySelectorAll('[data-panel]').forEach(panel => { panel.hidden = panel.dataset.panel !== tab; });
     if (location.hash.slice(1) !== tab) history.replaceState(null, '', location.pathname + location.search + '#' + tab);
-    try { localStorage.setItem('mesa-aba', tab); } catch { /* sem memória do aparelho */ }
+    try { localStorage.setItem('mesa-aba-v2', tab); } catch { /* sem memória do aparelho */ }
     draw(TAB_PARTS[tab]);
     if (scroll) { const top = root.getBoundingClientRect().top + window.scrollY; if (window.scrollY > top) window.scrollTo(0, top); }
   }
@@ -297,15 +387,16 @@
     if (!['pl', 'po', 'pp', 'pc'].some(key => (C.toCount(coins[key]) ?? 0) > 0)) d.inventory.coins = { ...coins, ...result.coins };
     if (!(d.choices || []).length) d.choices = C.choicesFromFeats(d.feats || {});
     d.sheetVersion = '2';
-    // Na visão do mestre (só leitura) a conversão fica só na tela; em conflito, nada é salvo por cima.
-    if (!readOnly() && !window.Mesa.conflict) { window.Mesa.dirty(); window.Mesa.saveData(); }
+    // Na visão do mestre (só leitura) a conversão fica só na tela; em conflito, nada é salvo por cima. O salvamento sai
+    // depois que os ids das escolhas forem achados (finishAutoSave), num PUT só.
+    if (!readOnly() && !window.Mesa.conflict) { window.Mesa.dirty(); conversionPending = true; }
     return { items: d.items.length, unknown: d.items.filter(item => !C.normalizeBulk(item.bulk)).length };
   }
 
   function showMigrationNote(report) {
     const box = q('[data-migration-note]');
     if (!report || readOnly()) return;
-    const message = report.failed ? 'Não deu para converter o inventário antigo: o texto continua guardado no fim do Inventário.' : `Ficha atualizada para a página nova: o inventário virou tabela (${plural(report.items, 'item', 'itens')}${report.unknown ? `, ${report.unknown} com Volume "?" para conferir` : ''}) e as Escolhas vieram dos talentos anotados. O texto antigo continua guardado no fim do Inventário.`;
+    const message = report.failed ? 'Não deu para converter o inventário antigo: o texto continua guardado no fim da aba Itens.' : `Ficha atualizada para a página nova: o inventário virou tabela (${plural(report.items, 'item', 'itens')}${report.unknown ? `, ${report.unknown} com Volume "?" para conferir` : ''}) e as Escolhas vieram dos talentos anotados. O texto antigo continua guardado no fim da aba Itens.`;
     box.innerHTML = `<span>${escapeHtml(message)}</span><button type="button" class="btn ghost small-btn" data-action="note-close">Entendi</button>`;
     box.hidden = false;
   }
@@ -328,13 +419,22 @@
       } catch { /* sem rede: tenta de novo na próxima abertura */ }
     }
     if (!changed) return;
-    if (!readOnly()) window.Mesa.dirty();
-    draw(['choices', 'feats']);
+    if (!readOnly()) { window.Mesa.dirty(); conversionPending = true; }
+    draw(['choices', 'feats', 'levelCard']);
+  }
+
+  // Correções automáticas da abertura (conversão, ids das escolhas) vão para a nuvem num salvamento só, sem esperar o
+  // jogador: não são edições dele, e a ficha não deve abrir "não salva".
+  function finishAutoSave() {
+    if (!conversionPending || readOnly() || window.Mesa.conflict) return;
+    conversionPending = false;
+    window.Mesa.saveData();
   }
 
   async function loadCatalogNames() {
     try {
       const [classes, ancestries] = await Promise.all(['class', 'ancestry'].map(type => window.Mesa.api(searchPath({ type, limit: 60 }))));
+      catalog.classEntries = classes.entries;
       catalog.classes = classes.entries.map(entry => C.displayName(entry.name));
       catalog.ancestries = ancestries.entries.map(entry => C.displayName(entry.name));
       catalog.loaded = true;
@@ -344,7 +444,10 @@
       fill('lista-herancas', C.VERSATILE_HERITAGES);
     } catch { /* sem catálogo: as escolhas esperam a próxima abertura */ }
     draw(['choiceForm']);
-    if (catalog.loaded) resolveChoiceIds();
+    if (!catalog.loaded) { classInfo.status = 'error'; draw(['levelCard']); finishAutoSave(); return; }
+    loadClassInfo();
+    await resolveChoiceIds();
+    finishAutoSave();
   }
 
   // Magias gravadas sem o tipo (fichas antigas ou digitadas): o catálogo diz se é truque, foco ou ritual.
@@ -352,7 +455,7 @@
     const missing = (data().spells || []).filter(spell => spell.id && !spell.kind);
     if (!missing.length) return;
     await Promise.all(missing.map(async spell => { try { spell.kind = C.spellKind(await getEntry(spell.id)); } catch { /* fica como magia comum */ } }));
-    draw(['spellBook', 'spellsUse']);
+    draw(['spellBook', 'spellsUse', 'spellRead']);
   }
 
   // --- Janela da regra: texto do catálogo, anotação do jogador e campos editáveis ---
@@ -444,7 +547,7 @@
   function openChoicePicker({ slot, level, replace = null }) {
     const query = C.choiceQuery({ slot, level }, data().profile || {}, catalog);
     const base = { slot, level: String(level) };
-    const apply = choice => change(d => { d.choices ||= []; if (replace != null && d.choices[replace]) d.choices[replace] = choice; else d.choices.push(choice); }, ['choices', 'feats']);
+    const apply = choice => change(d => { d.choices ||= []; if (replace != null && d.choices[replace]) d.choices[replace] = choice; else d.choices.push(choice); }, ['choices', 'feats', 'levelCard']);
     const title = `${replace != null ? 'Trocar' : 'Escolher'}: ${SLOT_LABELS[slot] || slot}, nível ${level}`;
     if (!query) return openPicker({ title, types: [['feat', 'Talentos']], placeholder: 'Nome do talento', manualOnly: true, hint: choiceHint(slot), manualLabel: 'Anotar à mão (fica marcada para o mestre)', onManual: name => apply({ ...base, id: '', name, manual: true, note: '' }) });
     openPicker({ title, types: [['feat', 'Talentos']], placeholder: 'Filtrar pelo nome…', limit: 200, filters: { categories: query.categories, maxLevel: query.maxLevel }, hint: 'Lista para: ' + query.label + '.', manualLabel: 'Não está nos livros: anotar à mão (fica marcada)', manualAfterEmpty: true, onPick: entry => apply({ ...base, id: entry.id, name: C.displayName(entry.name), manual: false, note: '' }), onManual: name => apply({ ...base, id: '', name, manual: true, note: '' }) });
@@ -504,9 +607,18 @@
     'note-close': () => { q('[data-migration-note]').hidden = true; },
     tab: el => showTab(el.dataset.tab || el.dataset.tabTarget, { scroll: true }),
     jump: el => document.getElementById(el.dataset.target)?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' }),
-    'level-dec': () => { change(d => { d.profile.level = C.levelStep(d.profile.level, -1); }, ['top', 'acCheck', 'choiceForm']); window.Mesa.updateCalculations(); },
-    'level-inc': () => { change(d => { d.profile.level = C.levelStep(d.profile.level, 1); }, ['top', 'acCheck', 'choiceForm']); window.Mesa.updateCalculations(); },
-    'xp-add': el => change(d => { d.profile.xp = C.stepValue(d.profile.xp, Number(el.dataset.amount) || 0); }, []),
+    // Descer desfaz só o que o Somar pôs neste nível; os PV do nível novo ficam à espera do Somar (ficha-calc: levelUp/levelDown).
+    'level-dec': () => { change(d => { C.levelDown(d); }, ['top', 'hp', 'levelCard', 'acCheck', 'choiceForm']); window.Mesa.updateCalculations(); },
+    'level-inc': () => { change(d => { C.levelUp(d); }, ['top', 'levelCard', 'acCheck', 'choiceForm']); window.Mesa.updateCalculations(); },
+    // Ganho do nível: abre a lista já filtrada para aquela vaga e aquele nível.
+    'gain-choice': el => openChoicePicker({ slot: el.dataset.slot, level: el.dataset.level }),
+    // PV dos níveis que faltam (classe + Constituição), somados no máximo e nos atuais.
+    'hp-gain': () => {
+      if (classInfo.status !== 'ok' || classInfo.hpPerLevel == null) return;
+      change(d => { C.sumLevelHp(d, C.hpGain(classInfo.hpPerLevel, d.stats.con)); }, ['top', 'hp', 'levelCard']);
+    },
+    // XP com o ponto do milhar, como o jogador escreve ("1.760").
+    'xp-add': el => change(d => { d.profile.xp = (C.toCount(C.stepValue(d.profile.xp, Number(el.dataset.amount) || 0)) ?? 0).toLocaleString('pt-BR'); }, []),
     damage: () => applyHp('damage'),
     heal: () => applyHp('heal'),
     temp: () => applyHp('temp'),
@@ -540,7 +652,7 @@
     'spell-remove': (el, i) => { if (!confirm(`Remover ${C.displayName(data().spells[i].name)} da lista?`)) return; ruleDialog.close(); change(d => { d.spells.splice(i, 1); }, ['spellBook', 'spellsUse']); },
     'choice-add': () => openChoicePicker({ slot: q('[data-choice-slot]').value, level: q('[data-choice-level]').value || '1' }),
     'choice-swap': (el, i) => { const choice = data().choices[i]; if (choice) openChoicePicker({ slot: choice.slot, level: choice.level || '1', replace: i }); },
-    'choice-remove': (el, i) => { const choice = data().choices[i]; if (choice && confirm(`Remover ${C.displayName(choice.name)} das escolhas?`)) change(d => { d.choices.splice(i, 1); }, ['choices', 'feats']); },
+    'choice-remove': (el, i) => { const choice = data().choices[i]; if (choice && confirm(`Remover ${C.displayName(choice.name)} das escolhas?`)) change(d => { d.choices.splice(i, 1); }, ['choices', 'feats', 'levelCard']); },
     'choice-open': (el, i) => {
       const choice = data().choices[i];
       if (!choice) return;
@@ -579,19 +691,37 @@
     ACTIONS[el.dataset.action](el, Number(el.dataset.index));
   });
 
-  // Campos ligados pelo app.js: o app.js grava; aqui só se atualizam as partes de exibição que dependem deles.
+  // Campos ligados pelo app.js: o app.js grava; aqui só se atualizam, no máximo uma vez por quadro, as partes de exibição
+  // que dependem daquele campo. Anotações e outros textos longos não redesenham nada.
+  const PATH_PARTS = [
+    [/^profile\.(name|className|ancestry|heritage)$/, ['top', 'choiceForm']],
+    [/^stats\.(hpCurrent|hpMax|hpTemp)$/, ['top', 'hp']],
+    [/^stats\.(ac|dex)$/, ['top', 'ac', 'acCheck']],
+    [/^stats\.perception$/, ['perception']],
+    [/^stats\.(fort|reflex|will|speed|classDc|str|dex|con|int|wis|cha)$/, ['defenses']],
+    [/^stats\.str$/, ['totals']],
+    [/^stats\.con$/, ['levelCard']],
+    [/^defense\./, ['top', 'ac', 'shield', 'acCheck']],
+    [/^(items\.|inventory\.coins\.)/, ['totals']],
+    [/^spellcasting\./, ['spellsUse', 'spellRead']],
+    [/^skills\./, ['skills']],
+    [/^attacks\./, ['strikes']],
+    [/^abilities\./, ['feats']],
+  ];
+  const queued = new Set();
+  let frame = 0;
   document.addEventListener('input', event => {
     const path = event.target?.dataset?.bind;
     if (!path || !(root.contains(event.target) || ruleDialog.contains(event.target))) return;
-    const parts = ['top'];
-    if (/^(stats|defense|profile)\./.test(path)) parts.push('acCheck', 'ac', 'shield');
-    if (path.startsWith('stats.')) parts.push('hp', 'perception', 'defenses');
-    if (path.startsWith('profile.')) parts.push('choiceForm');
-    if (path.startsWith('items.') || path.startsWith('inventory.coins.') || path === 'stats.str') parts.push('totals');
-    if (path.startsWith('spellcasting.')) parts.push('spellsUse');
-    draw(parts);
+    for (const [pattern, parts] of PATH_PARTS) if (pattern.test(path)) parts.forEach(part => queued.add(part));
+    if (!queued.size || frame) return;
+    frame = requestAnimationFrame(() => { frame = 0; const parts = [...queued]; queued.clear(); draw(parts); });
   });
-  root.addEventListener('change', event => { if (event.target.matches('[data-choice-slot], [data-choice-level]')) renderChoiceForm(); });
+  root.addEventListener('change', event => {
+    if (event.target.matches('[data-choice-slot], [data-choice-level]')) renderChoiceForm();
+    // Classe trocada na Identidade: a tabela de progressão é outra.
+    if (event.target.dataset?.bind === 'profile.className') { classInfo.status = 'idle'; loadClassInfo(); }
+  });
   // Setas do teclado trocam de aba, como em qualquer lista de abas.
   root.querySelector('[role="tablist"]').addEventListener('keydown', event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -600,13 +730,23 @@
     showTab(TABS[next]);
     root.querySelector(`[data-tab="${TABS[next]}"]`).focus();
   });
-  window.addEventListener('hashchange', () => { const hash = location.hash.slice(1); if (TABS.includes(hash) && hash !== tab) showTab(hash, { scroll: true }); });
+  window.addEventListener('hashchange', () => { const name = tabName(location.hash.slice(1)); if (name && name !== tab) showTab(name, { scroll: true }); });
   ruleDialog.addEventListener('close', () => { render(); syncAllBound(); });
+  // Tocar no fundo escuro, fora da janela, fecha (como qualquer folha do celular).
+  for (const dialog of [ruleDialog, pickerDialog, document.getElementById('help-modal')]) dialog?.addEventListener('click', event => {
+    if (event.target !== dialog) return;
+    const box = dialog.getBoundingClientRect();
+    if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close();
+  });
+  // Armas e habilidades acrescentadas ou tiradas pelos botões do app.js: Golpes e Talentos acompanham na hora.
+  document.addEventListener('mesa:listas', () => { if (window.Mesa.data) draw(['strikes', 'feats']); });
 
   // Formulário de conjuração: desenhado uma vez e ligado pelo app.js (nunca é redesenhado).
   function setupCastingForm() {
-    const box = q('[data-casting-form]');
-    box.innerHTML = `<div class="form-grid"><label class="field">Tradição<select data-bind="spellcasting.tradition"><option value="">—</option>${Object.entries(TRADITIONS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label><label class="field">Tipo<select data-bind="spellcasting.kind"><option value="">—</option><option value="preparado">Preparado</option><option value="espontâneo">Espontâneo</option></select></label><label class="field">Ataque de magia<input data-bind="spellcasting.attack" inputmode="numeric" placeholder="+7"></label><label class="field">CD de magia<input data-bind="spellcasting.dc" inputmode="numeric" placeholder="17"></label><label class="field">Pontos de foco (máximo)<input data-bind="spellcasting.focus.max" inputmode="numeric" placeholder="0"></label></div><p class="small muted section-space">Espaços de magia por ranque (máximo por dia)</p><div class="slot-edit">${Array.from({ length: 10 }, (_, i) => `<label>${i + 1}º<input data-bind="spellcasting.slots.${i + 1}.max" inputmode="numeric" placeholder="0" aria-label="Espaços de ${i + 1}º ranque"></label>`).join('')}</div>`;
+    const box = q('[data-casting-form]'), d = data(), casting = d.spellcasting || {};
+    // Quem não conjura vê a conjuração recolhida (era um bloco grande e vazio no celular).
+    const hasCasting = casting.tradition || casting.kind || casting.attack || casting.dc || C.slotRanks(casting).length || (C.toInt(casting.focus?.max) ?? 0) > 0 || (d.spells || []).length;
+    box.innerHTML = `<details class="casting-details" ${hasCasting ? 'open' : ''}><summary>Conjuração: tradição, CD e espaços por ranque</summary><div class="form-grid section-space"><label class="field">Tradição<select data-bind="spellcasting.tradition"><option value="">—</option>${Object.entries(TRADITIONS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label><label class="field">Tipo<select data-bind="spellcasting.kind"><option value="">—</option><option value="preparado">Preparado</option><option value="espontâneo">Espontâneo</option></select></label><label class="field">Ataque de magia<input data-bind="spellcasting.attack" inputmode="numeric" placeholder="+7"></label><label class="field">CD de magia<input data-bind="spellcasting.dc" inputmode="numeric" placeholder="17"></label><label class="field">Pontos de foco (máximo)<input data-bind="spellcasting.focus.max" inputmode="numeric" placeholder="0"></label></div><p class="small muted section-space">Espaços de magia por ranque (máximo por dia)</p><div class="slot-edit">${Array.from({ length: 10 }, (_, i) => `<label>${i + 1}º<input data-bind="spellcasting.slots.${i + 1}.max" inputmode="numeric" placeholder="0" aria-label="Espaços de ${i + 1}º ranque"></label>`).join('')}</div></details>`;
     window.Mesa.bindAll(box);
   }
 

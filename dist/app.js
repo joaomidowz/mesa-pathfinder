@@ -19,39 +19,56 @@ const clone = value => JSON.parse(JSON.stringify(value));
 function merge(base, extra) { for(const [key,value] of Object.entries(extra || {})) { if(['__proto__','prototype','constructor'].includes(key)) continue; if(value && typeof value==='object' && !Array.isArray(value)) base[key]=merge(base[key] && typeof base[key]==='object' ? base[key] : {},value); else base[key]=value; } return base; }
 function getByPath(object,path) { return path.split('.').reduce((value,key)=>value?.[key],object); }
 function setByPath(object,path,value) { const parts=path.split('.'); if(parts.some(key=>['__proto__','prototype','constructor'].includes(key))) return; let target=object; for(const key of parts.slice(0,-1)) target=target[key] ||= {}; target[parts.at(-1)]=value; }
-let session, character, data, books=[], pending=false, conflict=false, draftVersion=null, timer, saving=null, editCounter=0;
+let session, character, data, books=[], pending=false, conflict=false, draftVersion=null, backupTimer, saving=null, editCounter=0, lastStatus='';
 const isMesa = location.pathname.endsWith('/mesa.html');
 let selectedId = new URLSearchParams(location.search).get('character');
 function localKey() { return `mesa-v4:${session.user.id}:${character.id}`; }
 function readOnly() { return character?.readOnly; }
-async function request(url,method='GET',payload) {
-  const response=await fetch(url,{method,cache:'no-store',headers:payload?{'content-type':'application/json'}:undefined,body:payload?JSON.stringify(payload):undefined});
+async function request(url,method='GET',payload,{keepalive=false}={}) {
+  let response;
+  try { response=await fetch(url,{method,cache:'no-store',keepalive,headers:payload?{'content-type':'application/json'}:undefined,body:payload?JSON.stringify(payload):undefined}); }
+  catch { throw Object.assign(new Error('Sem conexão com a mesa.'),{status:0}); }
   let result; try { result=await response.json(); } catch { result={error:'Resposta inválida do servidor.'}; }
   if(!response.ok) { const error=new Error(result.error || 'Falha de conexão.'); error.status=response.status; throw error; }
   return result;
 }
-function api(path,method,payload) { return request('/api/'+path,method,payload); }
+function api(path,method,payload,options) { return request('/api/'+path,method,payload,options); }
 // Rotas do servidor da mesa (/auth/*): só existem quando session.invitationMode é 'access-code' (cada um com o seu
 // código) ou 'email' (jogadores e mestre entram só com o e-mail cadastrado).
 function auth(path,payload) { return request('/auth/'+path,'POST',payload || {}); }
 function accessCodes() { return session?.invitationMode==='access-code'; }
 function emailLogin() { return session?.invitationMode==='email'; }
 function ownServer() { return accessCodes() || emailLogin(); }
-function setStatus(message,state='') { document.querySelectorAll('[data-cloud-status]').forEach(el=>{el.textContent=message;el.dataset.state=state;}); document.querySelectorAll('[data-save-status]').forEach(el=>el.textContent=state==='saved'?' · salvo':state==='saving'?' · salvando…':''); }
+// O status só é reescrito quando muda: repintar o topo a cada tecla pesa no celular. O botão Salvar mostra o estado.
+const SAVE_LABELS={saved:'Salvo',saving:'Salvando…',pending:'Salvar',offline:'Tentar de novo'};
+function setStatus(message,state='') {
+  if(lastStatus===state+'|'+message) return;
+  lastStatus=state+'|'+message;
+  document.querySelectorAll('[data-cloud-status]').forEach(el=>{el.textContent=message;el.dataset.state=state;});
+  document.querySelectorAll('[data-save-status]').forEach(el=>el.textContent=state==='saved'?' · salvo':state==='saving'?' · salvando…':state==='pending'?' · não salvo':'');
+  document.querySelectorAll('[data-save]').forEach(el=>{el.dataset.state=state;});
+  document.querySelectorAll('[data-save-label]').forEach(el=>{el.textContent=SAVE_LABELS[state]||'Salvar';});
+}
 // Em conflito, o rascunho guarda a versão em que as edições se basearam: assim o conflito continua visível ao recarregar.
 function backupLocal() { if(!character || readOnly()) return; try { localStorage.setItem(localKey(),JSON.stringify({data,version:conflict && draftVersion!=null ? draftVersion : character.version,pending,updatedAt:new Date().toISOString()})); } catch { setStatus('Não foi possível gravar o backup neste aparelho. Use Baixar backup.','offline'); } }
-function dirty() { if(readOnly()) return; pending=true;editCounter++;backupLocal();setStatus('Alterações pendentes · salvamento automático…','saving');clearTimeout(timer);timer=setTimeout(saveData,1100); }
-async function saveData() {
-  clearTimeout(timer);
+// Cópia no aparelho com folga de 1,5 s (gravar a cada tecla trava o celular); saindo da página ela é gravada na hora.
+function scheduleBackup() { if(backupTimer) return; backupTimer=setTimeout(()=>{backupTimer=null;backupLocal();},1500); }
+// Editar só marca a ficha como não salva. Ela vai para a nuvem no botão Salvar ou quando a página perde o foco
+// (outra aba, outro app, tela bloqueada, saída) — nunca no meio da digitação.
+function dirty() { if(readOnly()) return; pending=true;editCounter++;scheduleBackup();if(conflict) setStatus('Conflito: baixe seu backup e recarregue antes de continuar.','offline'); else setStatus('Alterações não salvas · toque em Salvar (salva sozinho ao sair da página)','pending'); }
+async function saveData({keepalive=false}={}) {
   if(!character || readOnly()) return;
-  if(conflict) { setStatus('Conflito: baixe seu backup e recarregue antes de continuar.','offline'); return; }
-  if(saving) { await saving; if(pending) return saveData(); return; }
+  if(conflict) { setStatus('Conflito: baixe seu backup e recarregue antes de continuar.','offline'); return false; }
+  if(saving) { await saving; if(pending) return saveData({keepalive}); return true; }
+  if(!pending) { setStatus(lastStatus.startsWith('saved|')?lastStatus.slice(6):'Ficha salva na nuvem.','saved'); return true; }
+  clearTimeout(backupTimer);backupTimer=null;
   const currentEdit=editCounter;
   const snapshot=clone(data);
   backupLocal();setStatus('Salvando na nuvem…','saving');
-  saving=(async()=>{try { const result=await api('characters/'+character.id,'PUT',{data:snapshot,version:character.version}); character.version=result.version;pending=editCounter!==currentEdit;backupLocal();setStatus(pending?'Há novas alterações pendentes.':`Salvo na nuvem · ${new Date(result.updatedAt).toLocaleTimeString('pt-BR')}`,pending?'saving':'saved');return true; } catch(error) { if(error.status===409) conflict=true;setStatus(error.message+' · backup local preservado.','offline');return false;} })();
+  const small=keepalive && new Blob([JSON.stringify(snapshot)]).size<60000;
+  saving=(async()=>{try { const result=await api('characters/'+character.id,'PUT',{data:snapshot,version:character.version},{keepalive:small}); character.version=result.version;pending=editCounter!==currentEdit;backupLocal();setStatus(pending?'Há alterações novas não salvas · toque em Salvar.':`Salvo na nuvem · ${new Date(result.updatedAt).toLocaleTimeString('pt-BR')}`,pending?'pending':'saved');return true; } catch(error) { if(error.status===409) conflict=true;setStatus(error.message+' · backup local preservado.','offline');return false;} })();
   const ok=await saving;saving=null;
-  if(ok && pending) {clearTimeout(timer);timer=setTimeout(saveData,600);}return ok;
+  return ok;
 }
 function exportData() { const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=`personagem-${character.id}-${new Date().toISOString().slice(0,10)}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),5000); }
 function updateCalculations() { document.querySelectorAll('[data-calc="rage-temp"]').forEach(el=>el.textContent=(Number(data.profile.level)||0)+(Number(data.stats.con)||0)); document.querySelectorAll('[data-barbarian]').forEach(el=>el.hidden=!/b[áa]rbaro/i.test(data.profile.className)); }
@@ -60,7 +77,8 @@ function bindField(el) {
   const value=getByPath(data,path) ?? '';
   if(el.type==='checkbox') el.checked=!!value;else if('value' in el) el.value=value;else el.textContent=value;
   if(el.dataset.wired) return;el.dataset.wired='1';
-  el.addEventListener('input',()=>{const next=el.type==='checkbox'?el.checked:el.value;setByPath(data,path,next);document.querySelectorAll('[data-bind]').forEach(other=>{if(other!==el && other.dataset.bind===path) {if(other.type==='checkbox') other.checked=!!next;else if('value' in other) other.value=next;else other.textContent=next;}});updateCalculations();dirty();});
+  // A cada tecla: grava na ficha viva, copia para os outros campos do mesmo caminho (busca direta, não a página toda) e marca.
+  el.addEventListener('input',()=>{const next=el.type==='checkbox'?el.checked:el.value;setByPath(data,path,next);if(el.dataset.bind)document.querySelectorAll(`[data-bind="${CSS.escape(path)}"]`).forEach(other=>{if(other===el)return;if(other.type==='checkbox') other.checked=!!next;else if('value' in other) other.value=next;else other.textContent=next;});if(/^(profile|stats)\./.test(path))updateCalculations();dirty();});
 }
 // [data-free] fica livre até na visão do mestre (ex.: o campo de pesquisa de regras).
 function bindAll(root=document) { root.querySelectorAll('[data-bind],[data-save-key]').forEach(bindField); if(readOnly()) root.querySelectorAll('input:not([data-free]),textarea:not([data-free]),select:not([data-free]),[data-mutate]').forEach(el=>el.disabled=true); }
@@ -100,7 +118,7 @@ function renderReferences() {
   root.innerHTML=data.references.map((ref,i)=>`<article class="ability-card"><div class="form-grid"><label>Título<input data-bind="references.${i}.title"></label><label>Categoria<input data-bind="references.${i}.category" placeholder="classe, talento, ação…"></label></div><label>Notas<textarea data-bind="references.${i}.notes"></textarea></label>${refMarkup('references.'+i,ref)}<button class="info-button" data-remove-ref="${i}" data-mutate>Remover referência</button></article>`).join('');
   root.querySelectorAll('[data-remove-ref]').forEach(button=>button.addEventListener('click',()=>{data.references.splice(Number(button.dataset.removeRef),1);dirty();renderDynamic();}));
 }
-function renderDynamic() {renderSkills();renderAbilities();renderAttacks();renderReferences();bindAll();wireRefs(document);}
+function renderDynamic() {renderSkills();renderAbilities();renderAttacks();renderReferences();bindAll();wireRefs(document);document.dispatchEvent(new CustomEvent('mesa:listas'));}
 function openHelp(title,description) {const dialog=document.querySelector('#help-modal');if(!dialog){alert(title+'\n\n'+description);return;}dialog.querySelector('[data-help-title]').textContent=title;dialog.querySelector('[data-help-body]').textContent=description;dialog.showModal();}
 function addControls() {
   for(const [selector,text,callback] of [['[data-abilities]','+ Adicionar habilidade',()=>{data.abilities['a_'+crypto.randomUUID().replaceAll('-','')]={name:'Nova habilidade',effect:'',source:'',reference:{}};}],['[data-attacks]','+ Adicionar arma',()=>data.attacks.push({name:'',bonus:'',damage:'',traits:'',notes:'',reference:{}})],['[data-references]','+ Adicionar referência',()=>data.references.push({title:'',category:'',notes:'',book:'',page:''})]]) {
@@ -118,22 +136,26 @@ async function initCharacter() {
   data=merge(clone(DEFAULTS),character.data);migrateReferences();
   // Nunca misturar dados de contas/personagens nem substituir nuvem automaticamente.
   const draft=localStorage.getItem(localKey());
-  if(draft && !readOnly()) {try {const parsed=JSON.parse(draft);if(parsed.pending && confirm('Há alterações locais não enviadas desta ficha. Restaurar para revisar?')) {data=merge(clone(DEFAULTS),parsed.data);pending=true;conflict=parsed.version!==character.version;if(conflict)draftVersion=parsed.version;}}catch{}}
+  // Rascunho igual ao que está na nuvem (o salvamento da saída chegou, mas a página fechou antes de ver a resposta): apaga sem perguntar.
+  if(draft && !readOnly()) {try {const parsed=JSON.parse(draft);if(parsed.pending && JSON.stringify(merge(clone(DEFAULTS),parsed.data))===JSON.stringify(data)) localStorage.removeItem(localKey());else if(parsed.pending && confirm('Há alterações locais não enviadas desta ficha. Restaurar para revisar?')) {data=merge(clone(DEFAULTS),parsed.data);pending=true;conflict=parsed.version!==character.version;if(conflict)draftVersion=parsed.version;}}catch{}}
   document.title=(data.profile.name || 'Personagem')+' · Mesa Pathfinder';
   // Ficha, Combate e Pesquisa são abas da própria página do personagem; o menu leva ao resto da mesa.
   document.querySelectorAll('.topbar nav').forEach(nav=>{nav.innerHTML='<a href="mesa.html">Mesa</a><a href="grupo.html">Grupo</a><a href="livro.html">Livros</a><a href="busca.html">Buscar</a>';});
   augmentFieldReferences();renderDynamic();addControls();updateCalculations();
-  document.querySelectorAll('[data-save]').forEach(button=>{button.disabled=readOnly();button.addEventListener('click',saveData);});
+  document.querySelectorAll('[data-save]').forEach(button=>{button.disabled=readOnly();button.addEventListener('click',()=>saveData());});
   document.querySelectorAll('[data-reset]').forEach(button=>{button.hidden=true;});
   document.querySelectorAll('[data-export]').forEach(button=>button.addEventListener('click',exportData));
   document.querySelectorAll('[data-import]').forEach(input=>input.addEventListener('change',async()=>{if(readOnly())return;try {const parsed=JSON.parse(await input.files[0].text());if(!parsed.profile || typeof parsed.profile.name!=='string')throw new Error('Backup inválido.');if(!confirm('Substituir os campos desta ficha pelo backup?'))return;data=merge(clone(DEFAULTS),parsed);dirty();if(await saveData())location.reload();}catch(error){alert(error.message);}input.value='';}));
   document.querySelectorAll('[data-help]').forEach(button=>button.addEventListener('click',()=>openHelp(...skillInfo[button.dataset.help])));
   document.querySelectorAll('[data-now]').forEach(el=>el.textContent=new Date().toLocaleDateString('pt-BR'));
-  setStatus(readOnly()?'Visão do mestre · somente leitura':pending?'Backup local restaurado · revise e salve':'Ficha carregada da nuvem · salvamento automático',readOnly()?'':'saved');
-  document.addEventListener('input',event=>{if(event.target.matches('[data-bind],[data-save-key]'))backupLocal();});
+  setStatus(readOnly()?'Visão do mestre · somente leitura':pending?'Backup local restaurado · revise e toque em Salvar':'Ficha carregada · salva no botão Salvar ou ao sair da página',readOnly()?'':pending?'pending':'saved');
   document.querySelectorAll('.topbar nav a').forEach(link=>link.addEventListener('click',async event=>{if(!pending)return;event.preventDefault();const ok=await saveData();if(ok || confirm('Ainda há alterações não salvas na nuvem. Sair mesmo assim?'))location.href=link.href;}));
   window.addEventListener('beforeunload',event=>{if(pending){backupLocal();event.preventDefault();event.returnValue='';}});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden && pending && !conflict)saveData();});
+  // Salvamento automático só quando a página perde o foco: outra aba, outro app, tela bloqueada ou saída da página.
+  const autoSave=()=>{if(pending && !conflict && !readOnly()){backupLocal();saveData({keepalive:true});}};
+  window.addEventListener('blur',autoSave);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)autoSave();});
+  window.addEventListener('pagehide',()=>{if(pending && !conflict && !readOnly()){backupLocal();saveData({keepalive:true});}});
   window.addEventListener('online',()=>{if(pending&&!conflict)saveData();});
   document.dispatchEvent(new CustomEvent('mesa:ficha'));
 }
