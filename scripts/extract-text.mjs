@@ -1,36 +1,19 @@
-// Extrai o texto de cada página dos dois livros com pdftotext (poppler).
+// Extrai o texto de cada página dos livros do cadastro (scripts/livros.mjs) com pdftotext (poppler).
 // - modo raw: ordem de leitura correta (coluna por coluna) — usado para parsear entradas
 // - modo layout: colunas alinhadas — usado para parsear tabelas
+// A marca d'água do comprador ("Licenciado para Nome, e-mail", grudada no texto da página) sai de qualquer posição. Se
+// sobrar e-mail pessoal, o nome dela ou "Licenciado para", a extração para sem gravar: esse texto vai para a busca.
 // Saída: data/pages.json  [{book, page, chapter, raw, layout}]
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { LIVROS } from './livros.mjs';
+import { watermarks, stripWatermarks, assertClean } from './watermark.mjs';
 
 const run = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-const BOOKS = [
-  {
-    id: 'livro1', pdf: path.join(root, 'books/livro1.pdf'), pages: 469, offset: 1,
-    // Mapa de capítulos pelas páginas impressas (sumário do livro).
-    chapters: [
-      [1, 3, 'Abertura'], [4, 39, 'Introdução'], [40, 89, 'Ancestralidades e Biografias'],
-      [90, 223, 'Classes'], [224, 247, 'Perícias'], [248, 265, 'Talentos'],
-      [266, 295, 'Equipamento'], [296, 395, 'Magia'], [396, 441, 'Jogando Pathfinder'],
-      [442, 447, 'Apêndice de condições'], [448, 451, 'Ficha'], [452, 469, 'Glossário e índice'],
-    ],
-  },
-  {
-    id: 'livro2', pdf: path.join(root, 'books/livro2.pdf'), pages: 322, offset: 2,
-    chapters: [
-      [1, 5, 'Abertura'], [6, 53, 'Ancestralidades'], [54, 171, 'Classes'],
-      [172, 223, 'Arquétipos'], [224, 235, 'Talentos'], [236, 271, 'Magias'],
-      [272, 311, 'Pilha de tesouros'], [312, 314, 'Tabela de Tesouros'], [315, 322, 'Glossário e índice'],
-    ],
-  },
-];
 
 function clean(text, page) {
   const lines = text.split('\n').map(line => line.replace(/\s+$/,''));
@@ -45,20 +28,27 @@ function clean(text, page) {
 }
 
 const pages = [];
-for (const book of BOOKS) {
+for (const book of LIVROS) {
+  const pdf = path.join(root, 'books', book.pdf);
+  if (!fs.existsSync(pdf)) throw new Error(`Falta books/${book.pdf} (${book.name}).`);
   const [rawOut, layoutOut] = await Promise.all([
-    run('pdftotext', ['-raw', book.pdf, '-'], { maxBuffer: 120 * 1024 * 1024 }),
-    run('pdftotext', ['-layout', book.pdf, '-'], { maxBuffer: 120 * 1024 * 1024 }),
+    run('pdftotext', ['-raw', pdf, '-'], { maxBuffer: 200 * 1024 * 1024 }),
+    run('pdftotext', ['-layout', pdf, '-'], { maxBuffer: 200 * 1024 * 1024 }),
   ]);
-  const rawPages = rawOut.stdout.split('\f');
-  const layoutPages = layoutOut.stdout.split('\f');
+  const marks = watermarks(rawOut.stdout + '\n' + layoutOut.stdout);
+  const rawPages = stripWatermarks(rawOut.stdout, marks).split('\f');
+  const layoutPages = stripWatermarks(layoutOut.stdout, marks).split('\f');
+  let count = 0;
   for (let index = 0; index < rawPages.length; index++) {
-    const page = index + 1 - book.offset; // página impressa
+    const page = index + 1 - book.pdfOffset; // página impressa
     if (page < 1 || page > book.pages) continue;
-    const chapter = book.chapters.find(([start, end]) => page >= start && page <= end)?.[2] || 'Abertura';
-    pages.push({ book: book.id, page, chapter, raw: clean(rawPages[index], page), layout: clean(layoutPages[index], page) });
+    const chapter = book.chapters?.find(([start, end]) => page >= start && page <= end)?.[2] || '';
+    const raw = clean(rawPages[index], page), layout = clean(layoutPages[index] || '', page);
+    assertClean(`${book.id} p.${page}`, raw + '\n' + layout, marks);
+    pages.push({ book: book.id, page, chapter, raw, layout });
+    count++;
   }
-  console.log(`${book.id}: ${book.pages} páginas extraídas`);
+  console.log(`${book.id}: ${count} páginas extraídas${marks.length ? ` (marca d'água removida: ${marks.length} comprador${marks.length > 1 ? 'es' : ''})` : ''}`);
 }
 
 fs.mkdirSync(path.join(root, 'data'), { recursive: true });

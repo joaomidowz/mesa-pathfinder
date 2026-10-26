@@ -1,18 +1,16 @@
-// Renderiza as páginas impressas dos PDFs para JPG usando o poppler (pdftoppm).
+// Renderiza as páginas impressas dos livros do cadastro (scripts/livros.mjs) para JPG usando o poppler (pdftoppm).
 // Equivalente ao scripts/render-books.py original (escala 1.8 ≈ 130 DPI), sem depender de PyMuPDF.
-// Saída: books/rendered/livro{1,2}/pages/{página impressa}.jpg
+// Saída: books/rendered/<livro>/pages/{página impressa}.jpg. Livro já renderizado é pulado.
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { LIVROS } from './livros.mjs';
 
 const run = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const BOOKS = [
-  { id: 'livro1', pdf: path.join(root, 'books/livro1.pdf'), pages: 469, offset: 1 },
-  { id: 'livro2', pdf: path.join(root, 'books/livro2.pdf'), pages: 322, offset: 2 },
-];
+const BOOKS = LIVROS.map(book => ({ id: book.id, pdf: path.join(root, 'books', book.pdf), pages: book.pages, offset: book.pdfOffset }));
 
 async function renderBook(book) {
   const target = path.join(root, 'books/rendered', book.id, 'pages');
