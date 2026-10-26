@@ -1,5 +1,6 @@
-// Constrói os catálogos estruturados (magias, talentos, classes, ancestralidades, condições, itens)
-// a partir do texto extraído (DATA_DIR/pages.json; padrão data/) e carrega tudo em DATA_DIR/local.db (tabelas srd_*).
+// Constrói os catálogos estruturados (magias, talentos, classes, ancestralidades, condições, itens, criaturas, perigos,
+// maldições, doenças e veículos) a partir do texto extraído (DATA_DIR/pages.json; padrão data/) dos livros do cadastro
+// (scripts/livros.mjs) e carrega tudo em DATA_DIR/local.db (tabelas srd_*).
 //
 // Estratégia:
 // - cabeçalhos de entrada detectados no modo RAW (linhas próprias, formato regular);
@@ -10,12 +11,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openLocalDb } from './local-db.mjs';
-import { parseEquipmentTables, parseTreasureItems } from './srd-items.mjs';
+import { LIVROS } from './livros.mjs';
+import { parseEquipmentTables, parseTreasureItems, buildTreasureItem } from './srd-items.mjs';
+import { adaptarRemaster } from './remaster.mjs';
+import { NEW_ANCHOR, STAT_TYPES, parseBookHeader, furnitureOf, dropFurniture, respaceLine, normalizeStatLine, splitBody, tidySpell } from './srd-books.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = path.resolve(root, process.env.DATA_DIR || 'data');
 const pages = JSON.parse(fs.readFileSync(path.join(dataDir, 'pages.json'), 'utf8'));
-const byBook = { livro1: pages.filter(p => p.book === 'livro1'), livro2: pages.filter(p => p.book === 'livro2') };
+const byBook = Object.fromEntries(LIVROS.map(book => [book.id, pages.filter(p => p.book === book.id)]));
+// Os dois Livros do Jogador seguem pelo caminho original, intocado: os ids das entradas não mudam (as fichas guardam ids).
+// Os demais livros passam pelo caminho dos livros novos, mais abaixo.
+const ORIGINAL_BOOKS = ['livro1', 'livro2'];
+const NEW_BOOKS = LIVROS.map(book => book.id).filter(id => !ORIGINAL_BOOKS.includes(id) && byBook[id].length);
 
 // ---------- utilidades ----------
 const deaccent = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -43,7 +51,8 @@ for (const page of pages) {
   page._sq = chars.join('');
   page._map = map;
 }
-function fixName(page, rawName) {
+const ENTRY_ANCHOR = /^\s*(?:\[(one-action|two-actions|three-actions|free-action|reaction)\]\s*)?(MAGIA|TRUQUE|TALENTO|FOCO|RITUAL)\s*\d/;
+function fixName(page, rawName, anchor = ENTRY_ANCHOR) {
   const target = rawName.replace(/\s+/g, '');
   let from = 0;
   while (true) {
@@ -54,7 +63,7 @@ function fixName(page, rawName) {
     const before = page.layout[start - 1];
     if (before && !/[\s(«"'“–—-]/.test(before)) continue;
     const rest = page.layout.slice(stop + 1, stop + 80);
-    if (!/^\s*(?:\[(one-action|two-actions|three-actions|free-action|reaction)\]\s*)?(MAGIA|TRUQUE|TALENTO|FOCO|RITUAL)\s*\d/.test(rest)) continue;
+    if (!anchor.test(rest)) continue;
     return page.layout.slice(start, stop + 1).trim();
   }
 }
@@ -83,7 +92,7 @@ const SKIP_CHAPTERS = new Set(['Glossário e índice', 'Abertura', 'Ficha', 'Tab
 
 function scanHeaders() {
   const headers = [];
-  for (const book of ['livro1', 'livro2']) {
+  for (const book of ORIGINAL_BOOKS) {
     for (const page of byBook[book]) {
       if (SKIP_CHAPTERS.has(page.chapter)) continue;
       const lines = page.raw.split('\n');
@@ -104,10 +113,10 @@ const CLASS_NAMES = ['Bardo', 'Bruxo', 'Clérigo', 'Druida', 'Guerreiro', 'Ladin
 const ANCESTRY_NAMES = ['Anão', 'Elfo', 'Gnomo', 'Goblin', 'Halfling', 'Humano', 'Leshy', 'Orc', 'Amurrun', 'Hobgoblin', 'Iruxi', 'Kholo', 'Kobold', 'Tengu', 'Tripkee', 'Ysoki'];
 const SEED_TRAITS = ['GERAL', 'PERÍCIA', 'ARQUÉTIPO', 'COMPANHEIRO', 'INCOMUM', 'RARO', 'ÚNICO', 'COMUM',
   ...SKILL_NAMES.map(s => s.toUpperCase()), ...CLASS_NAMES.map(s => s.toUpperCase()), ...ANCESTRY_NAMES.map(s => s.toUpperCase())];
-function buildTraitVocab() {
+function buildTraitVocab(source = pages) {
   const freq = new Map();
   for (const token of SEED_TRAITS) freq.set(token, 99);
-  for (const page of pages) {
+  for (const page of source) {
     for (const line of page.raw.split('\n')) {
       const t = line.trim();
       if (t.length < 3 || t.length > 90 || !isUpperLine(t)) continue;
@@ -216,7 +225,8 @@ const featCategory = traits => {
 };
 
 // ---------- varredura principal ----------
-const vocab = buildTraitVocab();
+// Vocabulário só dos Livros do Jogador: com o dos livros novos, a separação dos traços colados deles mudaria.
+const vocab = buildTraitVocab(ORIGINAL_BOOKS.flatMap(book => byBook[book]));
 const headers = scanHeaders();
 const entries = [];
 const seen = new Set();
@@ -288,6 +298,61 @@ for (let k = 0; k < entries.length; k++) {
 }
 for (const entry of entries) { delete entry.header; delete entry.bodyLines; }
 
+// ---------- livros novos: todos os tipos de cabeçalho (funções em scripts/srd-books.mjs) ----------
+const NEW_CLASS_NAMES = ['Inventor', 'Pistoleiro', 'Psíquico', 'Taumaturgo', 'Cineticista'];
+// Traços de origem dos livros novos: ancestralidade do Autômato (PE), heranças versáteis do FR, desviantes e consequências (AO).
+const NEW_CATEGORY_TOKENS = new Map([...CATEGORY_TOKENS, ...NEW_CLASS_NAMES.map(n => [squeeze(n), 'classe: ' + n]),
+  ['automato', 'ancestralidade: Autômato'], ['ardande', 'herança versátil: Ardande'], ['talos', 'herança versátil: Talos'],
+  ['desviante', 'desviante'], ['consequencia', 'consequência']]);
+const newFeatCategory = traits => [...new Set(traits.map(trait => NEW_CATEGORY_TOKENS.get(squeeze(trait))).filter(Boolean))].join(' | ');
+// Criatura, perigo, aflição e veículo: traços em maiúsculas e o bloco de estatísticas como texto, uma linha por campo.
+function buildStatEntry(header, body, traitVocab) {
+  const traits = [];
+  let i = 0;
+  while (i < body.length && i < 3 && isUpperLine(body[i].text)) { traits.push(...splitTraits(body[i].text, traitVocab)); i++; }
+  const entry = { name: header.nameRaw, type: header.type, level: header.level, traits, book: header.book, page: header.page,
+    text: body.slice(i).map(line => normalizeStatLine(respaceLine(line.page, line.text))).join('\n').trim() };
+  if (header.type === 'affliction') entry.category = header.kind === 'DOENÇA' ? 'doença' : 'maldição';
+  return entry;
+}
+
+const newEntries = [], newItems = [];
+const newVocab = buildTraitVocab(NEW_BOOKS.flatMap(book => byBook[book]));
+for (const book of NEW_BOOKS) {
+  const furniture = furnitureOf(byBook[book]);
+  const lines = byBook[book].flatMap(page => dropFurniture(page.raw.split('\n'), furniture).map(text => ({ page, text })));
+  const found = [];
+  lines.forEach((line, index) => {
+    const header = parseBookHeader(line.text);
+    if (header) found.push({ ...header, index, book, page: line.page.page, pageObj: line.page });
+  });
+  const keys = new Set();
+  for (let h = 0; h < found.length; h++) {
+    const header = found[h], next = found[h + 1];
+    // Nenhuma entrada passa de duas páginas depois da do cabeçalho: sem isso, a última antes de um apêndice levaria o livro todo.
+    const limit = lines.findIndex((line, i) => i > header.index && line.page.page > header.page + 2);
+    const end = Math.min(next ? next.index : lines.length, limit < 0 ? lines.length : limit);
+    const { body, rest } = splitBody(lines, header.index + 1, end, next && next.index === end ? next.nameRaw : null);
+    if (next && rest.length && squeeze(rest[0].text) === squeeze(next.nameRaw)) next.description = rest.slice(1).map(line => respaceLine(line.page, line.text)).join('\n').trim();
+    let entry;
+    if (header.type === 'item') {
+      entry = buildTreasureItem({ page: header.pageObj, nameRaw: header.nameRaw, level: header.level, plus: header.plus, section: { RUNA: 'runa', ARAPUCA: 'arapuca' }[header.kind] || '', body: body.map(line => respaceLine(line.page, line.text)) });
+    } else {
+      entry = STAT_TYPES.has(header.type) ? buildStatEntry(header, body, newVocab) : parseEntry(header, body.map(line => respaceLine(line.page, line.text)), newVocab);
+      const fixed = fixName(header.pageObj, header.nameRaw, NEW_ANCHOR);
+      entry.name = fixed || header.nameRaw;
+      entry.nameFixed = !!fixed;
+      if (entry.type === 'feat') entry.category = newFeatCategory(entry.traits);
+      if (entry.type === 'spell') tidySpell(entry);
+    }
+    if (header.description) entry.description = header.description;
+    const key = entry.type + '|' + squeeze(entry.name) + '|' + entry.level;
+    if (keys.has(key)) continue;
+    keys.add(key);
+    (entry.type === 'item' ? newItems : newEntries).push(entry);
+  }
+}
+
 // ---------- classes ----------
 const CLASS_DEFS = [
   ...['Bardo', 94, 'Bruxo', 108, 'Clérigo', 122, 'Druida', 136, 'Guerreiro', 150, 'Ladino', 166, 'Mago', 180, 'Patrulheiro', 194]
@@ -297,14 +362,21 @@ const CLASS_DEFS = [
     .reduce((acc, v, i, arr) => (i % 2 === 0 && acc.push({ name: arr[i], page: arr[i + 1] }), acc), [])
     .map(d => ({ ...d, book: 'livro2' })),
 ];
-function parseClasses() {
+// Classes dos livros novos (página impressa onde a classe começa). Nelas os rótulos vêm também em caixa baixa
+// ("Atributo-chave") e os PV como "8+modificador de Constituição": por isso a leitura tolerante (loose).
+const NEW_CLASS_DEFS = [
+  { name: 'Psíquico', book: 'ocultos', page: 9 }, { name: 'Taumaturgo', book: 'ocultos', page: 31 },
+  { name: 'Cineticista', book: 'elementos', page: 13 }, { name: 'Inventor', book: 'polvora', page: 15 }, { name: 'Pistoleiro', book: 'polvora', page: 105 },
+];
+function parseClasses(defs = CLASS_DEFS, loose = false) {
   const out = [];
-  for (const def of CLASS_DEFS) {
+  for (const def of defs) {
+    if (!byBook[def.book]?.length) continue;
     const section = byBook[def.book].filter(p => p.page >= def.page && p.page <= def.page + 16);
     const raw = section.map(p => p.raw).join('\n');
     const grab = re => { const m = raw.match(re); return m ? m[1].trim() : ''; };
-    const hp = Number(grab(new RegExp('PONTOS\\s*DE\\s*VIDA\\s*\\n\\s*(\\d+)'))) || null;
-    const keyAttr = grab(/ATRIBUTO-CHAVE\s*\n\s*([^\n]+)/).replace(/\.$/, '');
+    const hp = Number(grab(loose ? /pontos\s*de\s*vida\s*\n?\s*(\d+)/i : new RegExp('PONTOS\\s*DE\\s*VIDA\\s*\\n\\s*(\\d+)'))) || null;
+    const keyAttr = grab(loose ? /^\s*atributo-?\s*chave\*?\s*$\n\s*([^\n]+)/im : /ATRIBUTO-CHAVE\s*\n\s*([^\n]+)/).replace(/\.$/, '');
     const profMatch = raw.match(new RegExp('PROFICIÊNCIAS\\s*INICIAIS\\s*\\n([\\s\\S]{0,900}?)(?:Talentos\\s|Subclasse|Ferramentas|Estatísticas|\\n\\s*[A-ZÀ-Ü]{4,})'));
     const progMatch = raw.match(new RegExp('PROGRESSÃO\\s*DE\\s*' + accentClass(def.name) + '\\s*\\n'));
     const progression = [];
@@ -329,6 +401,8 @@ function parseClasses() {
       proficiencies: profMatch ? profMatch[1].trim() : '',
       progression,
     });
+    // Livros novos: a tabela vem com palavras coladas ("Talentodepistoleiro"); os espaços voltam pelo layout das páginas da classe.
+    if (loose) for (const row of progression) row.features = section.reduce((text, page) => respaceLine(page, text), row.features);
   }
   return out;
 }
@@ -462,8 +536,17 @@ const items = [
   ...parseEquipmentTables(byBook.livro1.filter(p => p.chapter === 'Equipamento')),
   ...parseTreasureItems(byBook.livro2.filter(p => p.chapter === 'Pilha de tesouros')),
 ];
+// Livros novos: entradas e itens montados no caminho deles, mais as classes novas.
+const newClasses = parseClasses(NEW_CLASS_DEFS, true);
+// Livros legados (de antes do Remaster): cada entrada sai adaptada, com o selo e a lista do que mudou (scripts/remaster.mjs).
+const LEGACY_BOOKS = new Set(LIVROS.filter(book => book.legacy).map(book => book.id));
+for (const entry of [...newEntries, ...newItems, ...newClasses]) if (LEGACY_BOOKS.has(entry.book)) adaptarRemaster(entry);
+const isSpellish = e => e.type === 'spell' || e.type === 'focus' || e.type === 'ritual';
+const creatures = newEntries.filter(e => e.type === 'creature');
+const statOthers = newEntries.filter(e => STAT_TYPES.has(e.type) && e.type !== 'creature');
 
-for (const [name, list] of Object.entries({ spells, feats, classes, ancestries, conditions, items })) {
+for (const [name, list] of Object.entries({ spells: [...spells, ...newEntries.filter(isSpellish)], feats: [...feats, ...newEntries.filter(e => e.type === 'feat')],
+  classes: [...classes, ...newClasses], ancestries, conditions, items: [...items, ...newItems], creatures, perigos: statOthers })) {
   fs.writeFileSync(path.join(dataDir, `${name}.json`), JSON.stringify(list, null, 1));
 }
 
@@ -504,25 +587,44 @@ for (const [category, count] of [...itemCategories].sort((a, b) => a[0].localeCo
 const badItems = items.filter(item => !item.price || (item.book === 'livro2' && (!item.nameFixed || item.text.length < 40 || item.text.length > 2200)));
 report.push('', `## Itens suspeitos (sem preço, nome não recuperado ou corpo fora do normal): ${badItems.length}`);
 for (const item of badItems) report.push(`- "${item.name}" (${item.book} p.${item.page}): preço="${item.price}", texto=${item.text.length}`);
+// Livros novos: contagem por livro e tipo, e o que parece fora do normal.
+const TYPE_ORDER = ['creature', 'hazard', 'affliction', 'vehicle', 'spell', 'focus', 'ritual', 'feat', 'item', 'class'];
+const newAll = [...newEntries, ...newItems, ...newClasses];
+report.push('', '## Livros novos', '', '| Livro | ' + TYPE_ORDER.join(' | ') + ' |', '| --- |' + TYPE_ORDER.map(() => ' --- |').join(''));
+for (const book of NEW_BOOKS) report.push(`| ${book} | ` + TYPE_ORDER.map(type => newAll.filter(e => e.book === book && e.type === type).length).join(' | ') + ' |');
+const badCreatures = creatures.filter(e => !/^CA\s*\d/m.test(e.text) || !/^PV\s*\d/m.test(e.text) || !/^Percep/m.test(e.text));
+report.push('', `## Criaturas sem Percepção, CA ou PV no bloco: ${badCreatures.length}`);
+for (const e of badCreatures.slice(0, 40)) report.push(`- "${e.name}" (${e.book} p.${e.page}) texto=${e.text.length}`);
+const newUnfixed = newEntries.filter(e => !e.nameFixed && /\S{14,}/.test(e.name));
+report.push('', `## Nomes possivelmente despaçados nos livros novos: ${newUnfixed.length}`);
+for (const e of newUnfixed.slice(0, 40)) report.push(`- ${e.type} "${e.name}" (${e.book} p.${e.page})`);
+const badNewClasses = newClasses.filter(c => c.progression.length !== 20 || !c.hpPerLevel || !c.keyAttribute);
+report.push('', `## Classes novas com problemas: ${badNewClasses.length}`);
+for (const c of badNewClasses) report.push(`- ${c.name}: progressão=${c.progression.length}/20 níveis, PV=${c.hpPerLevel}, atributo="${c.keyAttribute}"`);
 fs.writeFileSync(path.join(dataDir, 'srd-report.md'), report.join('\n'));
 
 console.log(`Magias: ${spells.filter(e => e.type === 'spell').length} | Foco: ${spells.filter(e => e.type === 'focus').length} | Rituais: ${spells.filter(e => e.type === 'ritual').length} | Talentos: ${feats.length}`);
 console.log(`Classes: ${classes.length} (problemáticas: ${badProg.length}) | Ancestralidades: ${ancestries.length} (problemáticas: ${badAnc.length}) | Condições: ${conditions.length}`);
 console.log(`Sem corpo: ${noText.length} | Nomes despaçados: ${unfixed.length} | Sem categoria: ${noCat.length} | Sem tradições: ${noTrad.length}`);
 console.log(`Itens: ${items.length} (Livro 1: ${items.filter(i => i.book === 'livro1').length}, Livro 2: ${items.filter(i => i.book === 'livro2').length}) | suspeitos: ${badItems.length}`);
+console.log(`Livros novos: ${newAll.length} entradas (${TYPE_ORDER.map(type => `${type} ${newAll.filter(e => e.type === type).length}`).join(', ')}) | criaturas sem CA/PV/Percepção: ${badCreatures.length} | classes novas com problema: ${badNewClasses.length}`);
 
 // ---------- carga no banco ----------
 const db = openLocalDb();
-db.exec('DELETE FROM srd_entries');
-db.exec('DELETE FROM srd_fts');
 const insertEntry = db.prepare('INSERT INTO srd_entries (id, type, name, norm, level, category, category_norm, traits, traits_norm, book, page, data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
 const insertFts = db.prepare('INSERT INTO srd_fts (rowid, name, text) VALUES (?,?,?)');
-// Itens por último: as linhas que já existiam mantêm o mesmo rowid no índice de texto.
-const all = [...entries, ...classes, ...ancestries, ...conditions, ...items];
+const insertPage = db.prepare('INSERT INTO srd_pages (book, page, chapter, norm, text) VALUES (?,?,?,?,?)');
+const insertPageFts = db.prepare('INSERT INTO srd_pages_fts (rowid, text) SELECT rowid, text FROM srd_pages WHERE rowid = last_insert_rowid()');
+// Itens e livros novos por último: as linhas que já existiam mantêm o mesmo rowid no índice de texto.
+const all = [...entries, ...classes, ...ancestries, ...conditions, ...items, ...newEntries, ...newClasses, ...newItems];
+// O catálogo inteiro é trocado numa transação só: se algo falhar no meio, o anterior continua valendo.
+let insertFail = 0;
 db.exec('BEGIN');
+try {
+db.exec('DELETE FROM srd_entries');
+db.exec('DELETE FROM srd_fts');
 let rowid = 0;
 const idCount = new Map();
-let insertFail = 0;
 for (const entry of all) {
   rowid++;
   const base = `${entry.type}-${squeeze(entry.name)}-${entry.book}${entry.level != null ? '-' + entry.level : ''}`;
@@ -532,7 +634,7 @@ for (const entry of all) {
   const text = [entry.text, entry.heightened?.map(hh => `Elevada (+${hh.plus}) ${hh.text}`).join('\n'),
     entry.progression ? 'Progressão: ' + entry.progression.map(p => `${p.level} ${p.features}`).join(' | ') : '',
     entry.heritages ? 'Heranças: ' + entry.heritages.map(hh => `${hh.name}. ${hh.text}`).join(' | ') : '',
-    entry.traditions, entry.range, entry.targets, entry.area, entry.defense, entry.duration, entry.prerequisites,
+    entry.traditions, entry.range, entry.targets, entry.area, entry.defense, entry.duration, entry.prerequisites, entry.description,
     ...(entry.type === 'item' ? [entry.category, entry.price, [entry.damage, entry.damageType].filter(Boolean).join(' '), entry.group, entry.usage, entry.activate, ...(entry.variants || []).map(v => `${v.name} ${v.text}`)] : [])]
     .filter(Boolean).join('\n');
   try {
@@ -546,16 +648,12 @@ for (const entry of all) {
     console.error('falha ao inserir', id, error.message);
   }
 }
-db.exec('COMMIT');
-
 db.exec('DELETE FROM srd_pages');
 db.exec('DELETE FROM srd_pages_fts');
-const insertPage = db.prepare('INSERT INTO srd_pages (book, page, chapter, norm, text) VALUES (?,?,?,?,?)');
-const insertPageFts = db.prepare('INSERT INTO srd_pages_fts (rowid, text) SELECT rowid, text FROM srd_pages WHERE rowid = last_insert_rowid()');
-db.exec('BEGIN');
 for (const page of pages) {
   insertPage.run(page.book, page.page, page.chapter, squeeze(page.raw), page.raw);
   insertPageFts.run();
 }
 db.exec('COMMIT');
+} catch (error) { db.exec('ROLLBACK'); throw error; }
 console.log(`Banco atualizado: ${all.length} entradas, ${pages.length} páginas indexadas, falhas: ${insertFail}.`);
