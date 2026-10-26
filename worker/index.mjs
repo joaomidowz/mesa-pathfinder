@@ -168,7 +168,7 @@ async function api(request, env, path) {
   }
   const pageMatch = path.match(/^\/api\/books\/([a-z0-9]+)\/pages\/(\d+)$/);
   if (pageMatch && method === 'GET') {
-    const book = visibleBooks(user).find(item => item.id === pageMatch[1]);
+    const book = visibleBooks(user).find(item => item.id === pageMatch[1] && item.pageImages);
     const page = Number(pageMatch[2]);
     // Livro inexistente ou escondido dá a mesma 404 da página fora do livro: não revela que ele existe.
     if (!book || page < 1 || page > book.pages) fail(404, 'Página fora do livro.');

@@ -138,7 +138,7 @@ sqlite.prepare("INSERT INTO srd_fts (rowid, name, text) SELECT rowid, name, json
 const addPage=sqlite.prepare("INSERT INTO srd_pages (book,page,chapter,norm,text) VALUES (?,?,'',?,?)");
 for(const [book,page,text] of [['bestiario1',1,'Página sintética do zorbalho escondido.'],['bestiario1',2,'Uma Quimeraazul colada pelo PDF.'],['polvora',3,'Página sintética do zorbalho aberto.'],['polvora',4,'Outra Quimeraazul colada pelo PDF.']])addPage.run(book,page,squeeze(text),text);
 sqlite.prepare("INSERT INTO srd_pages_fts (rowid, text) SELECT rowid, text FROM srd_pages WHERE book IN ('bestiario1','polvora')").run();
-for(const key of ['bestiario1/pages/1.jpg','polvora/pages/1.jpg'])bucket.set(key,{body:new Uint8Array([0xff,0xd8,0xff,0xd9])});
+for(const key of ['bestiario1/pages/1.jpg','polvora/pages/1.jpg','ocultos/pages/1.jpg'])bucket.set(key,{body:new Uint8Array([0xff,0xd8,0xff,0xd9])});
 async function bookPage(user,route){const response=await worker.fetch(new Request('https://table.test/api/books/'+route,{headers:{'oai-authenticated-user-id':identities[user][0],'oai-authenticated-user-email':identities[user][1]}}),env);return{status:response.status,type:response.headers.get('content-type'),json:response.status===200?null:await response.json()};}
 const ids=result=>result.entries.map(item=>item.id).sort(),pageKeys=result=>result.pages.map(item=>item.book+'/'+item.page).sort();
 const pageMissing=status(await bookPage('gm','livro2/pages/323'),404).error;
@@ -151,7 +151,9 @@ for(const who of ['bob','admin']){
   assert.deepEqual(ids(status(await req(who,'search?type=creature'),200)),['creature-automatozorbalho-polvora-2']);checks++;
   assert.equal(status(await req(who,'entries/creature-lobozorbalho-bestiario1'),404).error,'Entrada não encontrada.');checks++;
   assert.equal(status(await bookPage(who,'bestiario1/pages/1'),404).error,pageMissing);checks++;
-  status(await bookPage(who,'polvora/pages/1'),200);
+  status(await bookPage(who,'ocultos/pages/1'),200);
+  // Livro sem pageImages no cadastro fica só referenciado: nem arquivo que sobrou no volume é servido.
+  assert.equal(status(await bookPage(who,'polvora/pages/1'),404).error,pageMissing);checks++;
 }
 assert.equal(status(await bookPage('bob','naoexiste/pages/1'),404).error,pageMissing);checks++;
 assert.deepEqual(status(await req('bob','entries/creature-automatozorbalho-polvora-2'),200).data.remaster,['Termo sintético atualizado.']);checks++;
@@ -162,7 +164,8 @@ assert.deepEqual(ids(gmFts),['creature-automatozorbalho-polvora-2','creature-lob
 const gmLike=status(await req('gm','search?q=quimera+azul'),200);
 assert.deepEqual(ids(gmLike),['affliction-quimeraazulmaldita-bestiario1-3','vehicle-carroquimeraazul-polvora-1']);assert.deepEqual(pageKeys(gmLike),['bestiario1/2','polvora/4']);checks++;
 assert.equal(status(await req('gm','entries/creature-lobozorbalho-bestiario1'),200).book,'bestiario1');checks++;
-const gmPage=await bookPage('gm','bestiario1/pages/1');status(gmPage,200);assert.equal(gmPage.type,'image/jpeg');checks++;
+const gmPage=await bookPage('gm','ocultos/pages/1');status(gmPage,200);assert.equal(gmPage.type,'image/jpeg');checks++;
+assert.equal(status(await bookPage('gm','bestiario1/pages/1'),404).error,pageMissing);checks++;
 // Contagens só do que a conta vê.
 const statsOf=async who=>status(await req(who,'srd/stats'),200),count=(stats,type)=>stats.types.find(row=>row.type===type)?.count||0;
 const gmStats=await statsOf('gm'),bobStats=await statsOf('bob');

@@ -16,6 +16,7 @@ Desde 26/10/2026 a mesa tem 9 livros. O cadastro único é `scripts/livros.mjs`,
 
 - **Quem vê:** livro do mestre só aparece para o papel de mestre: busca, entradas, páginas e lista de livros. O administrador é jogador e não vê. A regra fica no Worker ([servidor-da-mesa.md](servidor-da-mesa.md)).
 - **Legado:** as entradas desses livros passam pela adaptação ao Remaster ([remaster.md](remaster.md)). Saem com o selo "Legado · adaptado ao Remaster" e com a lista do que mudou. O texto das páginas fica como no livro.
+- **Páginas em imagem (`pageImages`):** só os dois Livros do Jogador e o Arquivos Ocultos têm as páginas no volume. Cada livro pesa ~100 MB em imagem, e o volume do Railway tem limite. Os outros ficam **só referenciados**: regra completa e texto das páginas na busca, e no lugar de "Ver no livro" a referência "Bestiário 1, p. 10", para abrir no seu PDF. O leitor lista só os livros com imagem, e o servidor não entrega imagem de livro sem `pageImages`, nem as 144 páginas do FR que subiram pela metade em 26/10.
 - **Siglas:** são as que a mesa usa nas fichas para citar de onde veio algo ("Expansão de Truque Mágico — livro A, p. 24"). O filtro de livro da busca aceita a sigla.
 
 ## Acrescentar um livro
@@ -68,6 +69,6 @@ Em 26/10 foram 2.551 entradas: 861 criaturas, 68 perigos, 45 aflições, 45 veí
 
 O volume do Railway guarda as páginas (`/data/books/<id>/pages/*.jpg`) e o banco. Para levar um livro novo:
 
-1. Suba as páginas do livro: `railway volume files upload books/rendered/<id> /books/<id>`.
+1. Só se o livro tiver `pageImages: true`: suba as páginas com `railway volume files --volume mesa-pathfinder-volume upload books/rendered/<id> /books/<id>`.
 2. Suba o texto: `railway volume files upload data/pages.json /pages.json`. A cada subida, o `preparar.mjs` remonta o catálogo a partir dele. Ele troca só as tabelas `srd_*`, numa transação, sem tocar em fichas, membros nem acessos. Se a montagem falhar, o servidor sobe com o catálogo anterior.
 3. Publique o código (`railway up --ci`) para o Worker conhecer o livro.

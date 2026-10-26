@@ -58,6 +58,10 @@ assert.equal(R.markify('um \x01lobo\x02 [one-action] <i>'), `um <mark>lobo</mark
 // Rótulos dos tipos novos e nomes dos livros iguais ao cadastro (scripts/livros.mjs).
 assert.deepEqual(['creature', 'hazard', 'affliction', 'vehicle'].map(type => R.TYPE_LABELS[type]), ['Criatura', 'Perigo', 'Aflição', 'Veículo']); checks++;
 assert.deepEqual(JSON.parse(JSON.stringify(R.BOOK_NAMES)), Object.fromEntries(livrosDoWorker().map(book => [book.id, book.name]))); checks++;
+// Livros com páginas em imagem na tela = os do cadastro; os outros mostram só a referência.
+assert.deepEqual([...R.PAGE_IMAGES].sort(), livrosDoWorker().filter(book => book.pageImages).map(book => book.id).sort()); checks++;
+assert.ok(R.bookLink({ book: 'bestiario1', page: 10 }).includes('Bestiário 1, p. 10') && !R.bookLink({ book: 'bestiario1', page: 10 }).includes('href')); checks++;
+assert.ok(R.bookLink({ book: 'ocultos', page: 107 }).includes('livro.html?book=ocultos&page=107')); checks++;
 assert.equal(R.metaLine({ type: 'creature', level: -1, category: '', book: 'bestiario1', page: 7 }), 'Criatura · nível -1 · Bestiário 1, p. 7'); checks++;
 
 console.log('PASS', checks, 'checks: bloco de estatísticas (criatura, perigo, aflição, veículo), texto escapado, glifos de ação, selo de legado, nomes dos livros.');

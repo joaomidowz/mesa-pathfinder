@@ -69,7 +69,10 @@
     return `<div class="detail-field"><span>${escapeHtml(label)}</span><div>${actionGlyphs(escapeHtml(value))}</div></div>`;
   }
 
+  // Só estes livros têm as páginas em imagem no servidor (pageImages no cadastro); os outros ficam referenciados pela página.
+  const PAGE_IMAGES = new Set(['livro1', 'livro2', 'ocultos']);
   function bookLink(entry) {
+    if (!PAGE_IMAGES.has(entry.book)) return `<span class="book-ref">${escapeHtml(BOOK_NAMES[entry.book] || entry.book)}, p. ${Number(entry.page)}</span>`;
     return `<a class="btn" href="livro.html?book=${encodeURIComponent(entry.book)}&page=${entry.page}" target="_blank" rel="noopener">Ver no livro ↗</a>`;
   }
 
@@ -121,5 +124,5 @@
   ${(entry.traits || []).length ? `<div class="chips">${entry.traits.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('')}</div>` : ''}${bodyHtml(entry)}`;
   }
 
-  window.Regras = { TYPE_LABELS, BOOK_NAMES, escapeHtml, markify, reflow, metaLine, bookLink, bodyHtml, detailHtml };
+  window.Regras = { TYPE_LABELS, BOOK_NAMES, PAGE_IMAGES, escapeHtml, markify, reflow, metaLine, bookLink, bodyHtml, detailHtml };
 })();

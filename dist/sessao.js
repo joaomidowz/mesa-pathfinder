@@ -461,6 +461,7 @@
   // --- Janela da regra: texto do catálogo, anotação do jogador e campos editáveis ---
   function referenceLink(ref) {
     if (!ref?.book || !Number(ref.page)) return '';
+    if (!window.Regras.PAGE_IMAGES.has(ref.book)) return bookLink(ref);
     return `<a class="btn" href="livro.html?book=${encodeURIComponent(ref.book)}&page=${Number(ref.page)}" target="_blank" rel="noopener">Ver no livro ↗</a>`;
   }
   // Magias falam em ranque (como o livro); truques não têm ranque; o resto, nível.

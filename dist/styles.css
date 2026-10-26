@@ -203,3 +203,6 @@ dialog form { display: flex; justify-content: flex-end; margin-top: 18px; }
   /* Os resultados começam mais cedo na tela: a contagem por tipo e o texto de abertura somem no celular. */
   #stats, .search-hero .lead { display: none; }
 }
+
+/* Referência de livro sem as páginas em imagem no servidor (consulte o seu PDF). */
+.book-ref { display: inline-flex; align-items: center; padding: 8px 12px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-size: .85rem; }

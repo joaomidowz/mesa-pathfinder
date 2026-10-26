@@ -1,5 +1,5 @@
 // Busca SRD: consulta às regras estruturadas extraídas dos livros. Rótulos e detalhe vêm de regras.js.
-const { TYPE_LABELS, BOOK_NAMES, escapeHtml, markify, metaLine } = window.Regras;
+const { TYPE_LABELS, BOOK_NAMES, PAGE_IMAGES, escapeHtml, markify, metaLine } = window.Regras;
 const fields = ['q', 'type', 'level', 'book', 'trait'].map(id => document.getElementById(id));
 const [input, typeInput, levelInput, bookInput, traitInput] = fields;
 const results = document.getElementById('results');
@@ -58,12 +58,15 @@ function entryCard(entry) {
   return card;
 }
 
+// Livro sem as páginas em imagem no servidor: o cartão é só a referência (livro e página), sem link para o leitor.
 function pageCard(page) {
-  const card = document.createElement('a');
+  const card = document.createElement(PAGE_IMAGES.has(page.book) ? 'a' : 'article');
   card.className = 'result-card page-result';
-  card.href = `livro.html?book=${encodeURIComponent(page.book)}&page=${page.page}`;
-  card.target = '_blank';
-  card.rel = 'noopener';
+  if (PAGE_IMAGES.has(page.book)) {
+    card.href = `livro.html?book=${encodeURIComponent(page.book)}&page=${page.page}`;
+    card.target = '_blank';
+    card.rel = 'noopener';
+  }
   card.innerHTML = `<h3>Página — ${BOOK_NAMES[page.book] || page.book}, p. ${page.page}</h3><p class="small muted">${escapeHtml(page.chapter || '')}</p>` +
     (page.snippet ? `<p class="result-snippet small">${markify(page.snippet)}</p>` : '');
   return card;
