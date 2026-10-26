@@ -17,6 +17,8 @@ A ficha continua sendo um JSON livre validado por `validateData` (`worker/index.
 | `inventory.coins` | objeto | `{ pl, po, pp, pc }`, em texto. 1 PL = 10 PO = 100 PP = 1.000 PC; 1.000 moedas contam 1 de Volume. |
 | `choices` | lista de objetos | Escolhas de talento: `{ id, name, slot, level, manual, note }`. `slot` ∈ `classe`, `ancestralidade`, `pericia`, `geral`, `arquetipo`, `biografia`; `id` da entrada `feat-…` ou `''`; `manual: true` marca "fora dos livros" (anotada à mão); `note` guarda o texto original de uma escolha convertida. |
 | `sheetVersion` | texto | `'2'` depois da conversão das fichas antigas (abaixo). Personagem novo já nasce com `'2'`. Fica fora do `DEFAULTS`. |
+| `extra.pvAte` | texto | Nível até onde os PV (classe + Constituição) já estão na ficha. Sem a marca vale o nível atual, porque a ficha convertida já traz os PV. O **Subir** e o **−** gravam a marca antes de mudar o nível; acima dela o cartão de nível oferece o **Somar**, que soma de uma vez todos os níveis que faltam. |
+| `extra.pvNiveis` | objeto | `{ '<nível>': '<PV somados>' }`, um por nível somado pelo **Somar**. O **−** desfaz exatamente o que foi somado naquele nível; PV que já estavam na ficha continuam nela e não voltam a ser oferecidos. |
 | `spellcasting` | objeto | `{ tradition, kind, attack, dc, slots, focus }`. `tradition`: `arcana`, `divina`, `ocultista`, `primal` ou texto livre. `kind`: `preparado`, `espontâneo` ou `''`. `slots`: `{ '1': { max: '3', used: '1' }, … '10': … }` por nível de magia (ranque). `focus`: `{ max, current }`. |
 | `spells` | lista de objetos | `{ id, name, rank, kind, notes }`. `id` da entrada do catálogo (`spell-…`, `focus-…`, `ritual-…`) ou `''` para magia digitada à mão; `rank` é o ranque em que está preparada/conhecida; `kind` é `truque`, `magia`, `foco` ou `ritual` (do catálogo; ausente em fichas antigas, a página Sessão completa). |
 | `items` | lista de objetos | `{ id, name, qty, bulk, invested, notes, section }`. `id` da entrada `item-…` do catálogo ou `''`; `invested` é booleano; `section` ∈ `carregavel`, `consumivel`, `equipado` (sem ela, Carregável). `bulk` é o Volume **por unidade**: `'0'`, `'L'` ou um número; `''` aparece como "?" e entra no aviso de itens sem Volume (antes de 24/10/2026 contava 0). O Volume total segue o livro: 10 itens L contam 1, a fração cai; sobrecarregado acima de 5 + Força e máximo 10 + Força. |
@@ -44,15 +46,15 @@ Fichas de antes da página única guardavam o inventário em texto livre (`inven
 
 ## Ponte com o `app.js`: `window.Mesa` e o evento `mesa:ficha`
 
-Páginas de personagem (`?character=<id>`) carregam `app.js` **antes** do próprio script. O `app.js` busca a ficha, aplica o backup local, liga os campos `data-bind`, cuida do salvamento automático com versão (HTTP 409 em conflito) e, no fim, dispara `document.dispatchEvent(new CustomEvent('mesa:ficha'))`. A página escuta esse evento e então desenha o que é seu.
+Páginas de personagem (`?character=<id>`) carregam `app.js` **antes** do próprio script. O `app.js` busca a ficha, aplica o backup local, liga os campos `data-bind`, cuida do salvamento com versão (no botão Salvar ou quando a página perde o foco) (HTTP 409 em conflito) e, no fim, dispara `document.dispatchEvent(new CustomEvent('mesa:ficha'))`. A página escuta esse evento e então desenha o que é seu.
 
 `window.Mesa` expõe:
 
 - `session`, `character` (com `readOnly` e `version`), `data` (a ficha viva — altere este objeto) e `books`;
 - `conflict`: verdadeiro quando há conflito de versão aberto (nesse caso, nada de salvar automaticamente por cima);
 - `api(path, method, payload)` para `/api/*`;
-- `dirty()`: marca alteração e agenda o salvamento automático (respeita `readOnly`);
-- `saveData()`: salva já;
+- `dirty()`: marca a ficha como não salva e agenda a cópia no aparelho com folga de 1,5 s (respeita `readOnly`). Desde 26/10/2026 **não envia nada**: quem envia é o botão Salvar (`[data-save]`) ou a página perdendo o foco (`blur`, `visibilitychange`, `pagehide`);
+- `saveData({ keepalive })`: salva já, se houver algo pendente; `keepalive` é usado na saída da página. O botão Salvar recebe `data-state` (`saved`, `pending`, `saving`, `offline`) e o texto em `[data-save-label]`;
 - `bindAll(root)`: liga `data-bind` dentro de `root` (caixas de marcar usam `checked`) e, se a ficha for só leitura, desabilita os campos, menos os marcados com `data-free` (como a Pesquisa);
 - `updateCalculations()`: refaz as contas fixas da página (Fúria do bárbaro) depois de mudar nível ou atributos por botão;
 - `readOnly()`, `escapeAttr(texto)`, `openHelp(título, texto)` e `skillInfo` (nomes e explicações das perícias).
@@ -80,6 +82,7 @@ Funções puras usadas pela página do personagem e pelo painel do grupo (testes
 - **Golpes e magias:** `mapSequence` (ataques múltiplos), `slotRanks`, `dailyRest`, `spellKind`, `groupSpells`.
 - **Inventário:** `normalizeBulk`, `bulkSummary` (Volume do livro, limites pela Força e itens "?"), `coinsTotal`, `parseInventoryLine` e `migrateInventory` (conversão do texto antigo, pura e idempotente).
 - **Escolhas:** `choicesFromFeats`, `VERSATILE_HERITAGES`, `matchCatalogName`, `choiceQuery` (vaga → categorias e nível máximo), `pickFeat`.
+- **Subir de nível:** `levelGains` (o que a tabela da classe dá num nível, separado em vagas de talento, incremento de perícia, melhorias de atributo e características) e `hpGain` (PV da classe + Constituição).
 - **Painel do grupo:** `sortSheets`. Para achar entradas: `GET /api/search?q=&type=&level=&maxLevel=&category=&book=&trait=&limit=` (tipos: `spell`, `focus`, `ritual`, `feat`, `class`, `ancestry`, `condition`, `item`). `level` é exato e `maxLevel` é "até este nível"; `category` pode vir até 3 vezes, valendo qualquer uma (é assim que a vaga de ancestralidade junta `ancestralidade: Humano` e `herança versátil: Cambiante`); `limit` vai até 200.
 
 ## Painel do grupo: `GET /api/party`
