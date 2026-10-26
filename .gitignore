@@ -7,6 +7,8 @@ tmp/
 data/*.db
 data/*.db-*
 data/*.json
+# Relatório da extração: nomes de entradas dos livros (inclusive dos do mestre), muda a cada parse
+data/srd-report.md
 data/backups/
 # Segredos locais e worktrees de agentes
 .env
