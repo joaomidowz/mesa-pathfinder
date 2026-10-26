@@ -43,11 +43,14 @@ O build gera `dist/server/index.js`, que é um módulo Worker com os HTML, CSS e
 | `scripts/test-worker.mjs` | Worker: isolamento, papéis, migração, conflitos, busca SRD, campos da ficha, painel do grupo, limites |
 | `scripts/test-platform.mjs` | Plataforma: login por código e por e-mail, sessão, identidade forjada, origem, arquivos, backup |
 | `scripts/test-ficha-calc.mjs`, `scripts/test-items.mjs` | Contas da ficha e catálogo de itens (texto sintético) |
-| `scripts/render-books.py` | Regenera as 791 imagens de páginas a partir dos PDFs incluídos (requer PyMuPDF) |
+| `scripts/render-books.py` | Versão antiga da renderização (PyMuPDF), só dos dois Livros do Jogador; use `npm run render:pages` |
 | `scripts/render-pages.mjs` | Mesmas imagens usando poppler (`pdftoppm`), sem PyMuPDF |
-| `scripts/extract-text.mjs` | Extrai o texto das páginas dos dois livros (pdftotext) para `data/pages.json` |
+| `scripts/livros.mjs` | Cadastro único dos livros (id, páginas, deslocamento no PDF, quem vê, legado, siglas) |
+| `scripts/extract-text.mjs` | Extrai o texto das páginas dos livros do cadastro (pdftotext) para `data/pages.json`, sem a marca d'água (`scripts/watermark.mjs`) |
 | `scripts/parse-srd.mjs` | Constrói os catálogos (magias, talentos, classes, ancestralidades, condições, itens) e carrega o banco (`DATA_DIR`) |
 | `scripts/srd-items.mjs` | Extração dos itens: tabelas do Livro 1 e itens mágicos/alquímicos do Livro 2 ([docs/catalogo-de-itens.md](docs/catalogo-de-itens.md)) |
+| `scripts/srd-books.mjs` | Livros novos do catálogo: cabeçalhos de todos os tipos (criatura, perigo, aflição, veículo…), mobília de página e corte do corpo ([docs/livros.md](docs/livros.md)) |
+| `scripts/remaster.mjs` | Adaptação das entradas dos livros legados ao Remaster ([docs/remaster.md](docs/remaster.md)) |
 | `scripts/preparar.mjs`, `Dockerfile` | Hospedagem: recria o catálogo ao subir e empacota só o código ([docs/deploy.md](docs/deploy.md)) |
 | `scripts/novo-codigo.mjs` | `npm run codigo`: gera um código de acesso para `MESA_CODIGO_ADMIN` |
 | `scripts/local-db.mjs` | Banco local compartilhado (node:sqlite + migrações) e adaptador D1 |
