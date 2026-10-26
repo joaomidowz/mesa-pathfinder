@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { livrosDoWorker } from './livros.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
 const assets = {};
@@ -12,5 +13,6 @@ fs.mkdirSync(path.join(dist,'.openai'),{recursive:true});
 fs.copyFileSync(path.join(root,'.openai/hosting.json'),path.join(dist,'.openai/hosting.json'));
 const source = fs.readFileSync(path.join(root,'worker/index.mjs'),'utf8');
 const ownerDefaults = fs.readFileSync(path.join(root,'worker/owner-defaults.json'),'utf8');
-fs.writeFileSync(path.join(dist,'server/index.js'),source.replace('__ASSETS__',()=>JSON.stringify(assets)).replace('__OWNER_DEFAULTS__',()=>ownerDefaults));
+// Os livros entram antes do frontend: nenhum texto embutido pode ser confundido com o marcador.
+fs.writeFileSync(path.join(dist,'server/index.js'),source.replace('__BOOKS__',()=>JSON.stringify(livrosDoWorker())).replace('__ASSETS__',()=>JSON.stringify(assets)).replace('__OWNER_DEFAULTS__',()=>ownerDefaults));
 console.log('Worker construído: mesa, fichas e livros protegidos.');

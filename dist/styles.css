@@ -176,6 +176,13 @@ dialog form { display: flex; justify-content: flex-end; margin-top: 18px; }
 .detail-field > span { color: var(--muted); }
 .detail-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; line-height: 1.55; }
 .detail-pre { white-space: pre-wrap; background: #121516; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: .84rem; color: var(--muted); }
+/* Bloco de estatísticas (criatura, perigo, aflição, veículo), glifos de ação e selo de legado: montados no regras.js. */
+.stat-block { margin: 10px 0; padding: 6px 0; border-top: 1px solid var(--gold-soft); border-bottom: 1px solid var(--gold-soft); line-height: 1.5; }
+.stat-block p { margin: 0; padding: 2px 0; overflow-wrap: anywhere; }
+.action-glyph { color: var(--gold); font-size: .8em; letter-spacing: .06em; white-space: nowrap; }
+.legacy-note { margin: 8px 0 4px; }
+.legacy-chip { color: var(--gold); border-color: var(--gold-soft); }
+.legacy-note ul { margin: 6px 0 0; padding-left: 20px; }
 .detail-panel h4 { margin: 16px 0 6px; color: var(--gold); font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; }
 .detail-panel table { min-width: 0; }
 .level-cell { font-weight: 800; color: var(--gold); width: 44px; }

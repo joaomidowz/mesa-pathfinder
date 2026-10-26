@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import worker from '../dist/server/index.js';
+import { livrosDoWorker } from './livros.mjs';
 const sqlite=new DatabaseSync(':memory:');
 for(const file of fs.readdirSync('drizzle').filter(file=>file.endsWith('.sql')).sort())sqlite.exec(fs.readFileSync('drizzle/'+file,'utf8'));
 function statement(sql,params=[]) {return{bind(...values){return statement(sql,values);},async first(){return sqlite.prepare(sql).get(...params)||null;},async all(){return{results:sqlite.prepare(sql).all(...params)};},async run(){return{meta:{changes:sqlite.prepare(sql).run(...params).changes}};}};}
@@ -120,5 +121,65 @@ assert.ok(creatures.every(code=>code===201));checks++;
 // Modo de convite vem do ambiente: o servidor da mesa usa códigos de acesso.
 assert.equal(status(await req('bob','session'),200).invitationMode,'private-site-sharing');checks++;
 env.INVITATION_MODE='access-code';assert.equal(status(await req('bob','session'),200).invitationMode,'access-code');checks++;delete env.INVITATION_MODE;
-console.log('PASS',checks,'checks: membership, privacy, role changes, migration, optimistic locking, books, provisioning, SRD search, session fields, sheet v2 fields, items, feat slots (max level, repeated categories, 200 cap), party, limits, invitation mode.');
+// Livros por público: bestiario1 (do mestre) só para o mestre; o administrador entra como jogador e não vê. polvora e ocultos são de todos.
+// Tudo SINTÉTICO, nada dos livros: "zorbalho" casa pelo FTS; "quimera azul" só pelo texto espremido (reforço por LIKE).
+const allBooks=livrosDoWorker(),openBooks=allBooks.filter(book=>book.audience==='todos');
+assert.ok(allBooks.some(book=>book.id==='bestiario1'&&book.audience==='mestre')&&openBooks.some(book=>book.id==='polvora')&&openBooks.some(book=>book.id==='ocultos'),'premissa do cadastro');checks++;
+const squeeze=text=>text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const addEntry=sqlite.prepare("INSERT INTO srd_entries (id,type,name,norm,level,category,category_norm,traits,book,page,data) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+for(const [id,type,name,level,category,book,page,data] of [
+  ['creature-lobozorbalho-bestiario1','creature','LOBO ZORBALHO',-1,'','bestiario1',7,{legacy:true,remaster:[],text:'Percepção +6; faro sintético\nCA 15; Fort +7, Ref +7, Von +4\nPV 20'}],
+  ['affliction-quimeraazulmaldita-bestiario1-3','affliction','QUIMERAAZUL MALDITA',3,'maldição','bestiario1',8,{text:'Salvamento Vontade CD 18\nEstágio 1 texto sintético'}],
+  ['creature-automatozorbalho-polvora-2','creature','AUTÔMATO ZORBALHO',2,'','polvora',9,{legacy:true,remaster:['Termo sintético atualizado.'],text:'Percepção +4; sentido sintético'}],
+  ['vehicle-carroquimeraazul-polvora-1','vehicle','CARRO QUIMERAAZUL',1,'','polvora',10,{text:'Velocidade 9 metros'}],
+  ['feat-talentoocultozorbalho-ocultos-1','feat','TALENTO OCULTO ZORBALHO',1,'geral','ocultos',3,{text:'Texto sintético de teste.'}],
+])addEntry.run(id,type,name,squeeze(name),level,category,squeeze(category),'',book,page,JSON.stringify({name,type,level,...data}));
+sqlite.prepare("INSERT INTO srd_fts (rowid, name, text) SELECT rowid, name, json_extract(data, '$.text') FROM srd_entries WHERE book IN ('bestiario1','polvora','ocultos')").run();
+const addPage=sqlite.prepare("INSERT INTO srd_pages (book,page,chapter,norm,text) VALUES (?,?,'',?,?)");
+for(const [book,page,text] of [['bestiario1',1,'Página sintética do zorbalho escondido.'],['bestiario1',2,'Uma Quimeraazul colada pelo PDF.'],['polvora',3,'Página sintética do zorbalho aberto.'],['polvora',4,'Outra Quimeraazul colada pelo PDF.']])addPage.run(book,page,squeeze(text),text);
+sqlite.prepare("INSERT INTO srd_pages_fts (rowid, text) SELECT rowid, text FROM srd_pages WHERE book IN ('bestiario1','polvora')").run();
+for(const key of ['bestiario1/pages/1.jpg','polvora/pages/1.jpg'])bucket.set(key,{body:new Uint8Array([0xff,0xd8,0xff,0xd9])});
+async function bookPage(user,route){const response=await worker.fetch(new Request('https://table.test/api/books/'+route,{headers:{'oai-authenticated-user-id':identities[user][0],'oai-authenticated-user-email':identities[user][1]}}),env);return{status:response.status,type:response.headers.get('content-type'),json:response.status===200?null:await response.json()};}
+const ids=result=>result.entries.map(item=>item.id).sort(),pageKeys=result=>result.pages.map(item=>item.book+'/'+item.page).sort();
+const pageMissing=status(await bookPage('gm','livro2/pages/323'),404).error;
+for(const who of ['bob','admin']){
+  assert.deepEqual(status(await req(who,'books'),200).books,openBooks);assert.deepEqual(status(await req(who,'session'),200).books,openBooks);checks++;
+  const fts=status(await req(who,'search?q=zorbalho'),200);
+  assert.deepEqual(ids(fts),['creature-automatozorbalho-polvora-2','feat-talentoocultozorbalho-ocultos-1']);assert.deepEqual(pageKeys(fts),['polvora/3']);checks++;
+  const like=status(await req(who,'search?q=quimera+azul'),200);
+  assert.deepEqual(ids(like),['vehicle-carroquimeraazul-polvora-1']);assert.deepEqual(pageKeys(like),['polvora/4']);checks++;
+  assert.deepEqual(ids(status(await req(who,'search?type=creature'),200)),['creature-automatozorbalho-polvora-2']);checks++;
+  assert.equal(status(await req(who,'entries/creature-lobozorbalho-bestiario1'),404).error,'Entrada não encontrada.');checks++;
+  assert.equal(status(await bookPage(who,'bestiario1/pages/1'),404).error,pageMissing);checks++;
+  status(await bookPage(who,'polvora/pages/1'),200);
+}
+assert.equal(status(await bookPage('bob','naoexiste/pages/1'),404).error,pageMissing);checks++;
+assert.deepEqual(status(await req('bob','entries/creature-automatozorbalho-polvora-2'),200).data.remaster,['Termo sintético atualizado.']);checks++;
+// O mestre vê tudo: lista, busca (FTS e LIKE), entrada e página.
+assert.deepEqual(status(await req('gm','books'),200).books,allBooks);assert.deepEqual(status(await req('gm','session'),200).books,allBooks);checks++;
+const gmFts=status(await req('gm','search?q=zorbalho'),200);
+assert.deepEqual(ids(gmFts),['creature-automatozorbalho-polvora-2','creature-lobozorbalho-bestiario1','feat-talentoocultozorbalho-ocultos-1']);assert.deepEqual(pageKeys(gmFts),['bestiario1/1','polvora/3']);checks++;
+const gmLike=status(await req('gm','search?q=quimera+azul'),200);
+assert.deepEqual(ids(gmLike),['affliction-quimeraazulmaldita-bestiario1-3','vehicle-carroquimeraazul-polvora-1']);assert.deepEqual(pageKeys(gmLike),['bestiario1/2','polvora/4']);checks++;
+assert.equal(status(await req('gm','entries/creature-lobozorbalho-bestiario1'),200).book,'bestiario1');checks++;
+const gmPage=await bookPage('gm','bestiario1/pages/1');status(gmPage,200);assert.equal(gmPage.type,'image/jpeg');checks++;
+// Contagens só do que a conta vê.
+const statsOf=async who=>status(await req(who,'srd/stats'),200),count=(stats,type)=>stats.types.find(row=>row.type===type)?.count||0;
+const gmStats=await statsOf('gm'),bobStats=await statsOf('bob');
+assert.equal(gmStats.total,sqlite.prepare('SELECT COUNT(*) AS n FROM srd_entries').get().n);assert.equal(bobStats.total,gmStats.total-2);assert.deepEqual(await statsOf('admin'),bobStats);checks++;
+assert.deepEqual([count(gmStats,'creature'),count(bobStats,'creature'),count(gmStats,'affliction'),count(bobStats,'affliction')],[2,1,1,0]);checks++;
+// Filtro de livro por id ou sigla, sem diferenciar maiúsculas, e vale também para as páginas; escondido ou inexistente: o mesmo 400.
+assert.deepEqual(ids(status(await req('bob','search?book=AO'),200)),['feat-talentoocultozorbalho-ocultos-1']);checks++;
+const byAlias=status(await req('bob','search?book=ao&q=zorbalho'),200);
+assert.deepEqual(ids(byAlias),['feat-talentoocultozorbalho-ocultos-1']);assert.deepEqual(byAlias.pages,[]);checks++;
+assert.deepEqual(ids(status(await req('bob','search?book='+openBooks.find(book=>book.id==='livro2').aliases.at(-1).toLowerCase()),200)),['item-cordadeseda-livro2-1']);checks++;
+const gmB1=status(await req('gm','search?book=b1&q=zorbalho'),200);
+assert.deepEqual(ids(gmB1),['creature-lobozorbalho-bestiario1']);assert.deepEqual(pageKeys(gmB1),['bestiario1/1']);checks++;
+const unknownBook=status(await req('bob','search?book=xyz'),400).error;
+assert.equal(status(await req('bob','search?book=b1&q=zorbalho'),400).error,unknownBook);assert.equal(status(await req('admin','search?book=bestiario1'),400).error,unknownBook);checks++;
+// Tipos novos e nível -1 (criaturas e perigos).
+for(const type of ['creature','hazard','affliction','vehicle'])status(await req('bob','search?type='+type),200);
+assert.deepEqual(ids(status(await req('gm','search?type=creature&level=-1'),200)),['creature-lobozorbalho-bestiario1']);assert.deepEqual(ids(status(await req('bob','search?type=creature&level=-1'),200)),[]);checks++;
+status(await req('gm','search?type=creature&level=--1'),400);
+console.log('PASS',checks,'checks: membership, privacy, role changes, migration, optimistic locking, books, provisioning, SRD search, session fields, sheet v2 fields, items, feat slots (max level, repeated categories, 200 cap), party, limits, invitation mode, books by audience (list, session, pages, search FTS/LIKE, entries, stats, book by id or alias), new SRD types.');
 sqlite.close();

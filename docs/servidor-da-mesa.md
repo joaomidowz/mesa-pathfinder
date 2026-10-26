@@ -41,6 +41,10 @@ Para mesa de amigos, sem código para guardar: quem está cadastrado e ativo em 
 - Não há segredo: quem souber o e-mail entra como a pessoa (e vê os livros). Use e-mails que só a mesa conheça; **Revogar** corta o acesso na hora.
 - Para voltar aos códigos, troque `MESA_LOGIN` para `codigo` (ou apague a variável) e gere os links de acesso de novo. No modo código, o login por e-mail é recusado.
 
+## Quem vê quais livros
+
+O cadastro `scripts/livros.mjs` dá o público de cada livro, e o build o embute no Worker (mudou o cadastro, rode `npm run build`). Os de **todos** (Livros do Jogador 1 e 2, Arquivos Ocultos, Fúria dos Elementos, Pólvora e Engrenagens) aparecem para qualquer pessoa da mesa; os do **mestre** (Livro do Mestre, Bestiários 1 e 2, Monstros dos Mitos), só para quem tem o papel de mestre em **Convites e papéis**. O administrador conta como jogador e não os vê, a não ser que receba o papel de mestre. Quem decide é o Worker, em tudo: lista de livros, páginas, busca (entradas e páginas), entrada aberta e contagens. Para quem não pode ver, o livro do mestre responde como se não existisse: página com 404 e filtro `book` (id ou sigla, como `B1`) com 400 "Livro desconhecido.".
+
 ## O que protege e por quê
 
 - Código com 60 bits (12 símbolos de um alfabeto de 32): adivinhar é inviável, por isso não há limite de tentativas. No modo e-mail essa proteção não existe para jogadores e mestre (veja acima).

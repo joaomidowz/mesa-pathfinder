@@ -1,6 +1,11 @@
 const ASSETS = __ASSETS__;
 const OWNER_DEFAULTS = __OWNER_DEFAULTS__;
-const BOOKS = [{ id: 'livro1', name: 'Livro do Jogador 1', pages: 469, pdfOffset: 1 }, { id: 'livro2', name: 'Livro do Jogador 2', pages: 322, pdfOffset: 2 }];
+// Cadastro dos livros (scripts/livros.mjs, embutido no build): { id, name, pages, pdfOffset, audience, legacy, aliases }.
+const BOOKS = __BOOKS__;
+// Livro do mestre só para quem tem o papel de mestre (o administrador entra como jogador); público desconhecido, ninguém.
+// É a autorização de verdade: lista, páginas, busca, entradas e contagens passam por aqui.
+const visibleBooks = user => BOOKS.filter(book => book.audience === 'todos' || (book.audience === 'mestre' && user.role === 'master'));
+const placeholders = list => list.map(() => '?').join(', ');
 function json(value, status = 200) { return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } }); }
 function fail(status, message) { const error = new Error(message); error.status = status; throw error; }
 async function body(request) {
@@ -69,16 +74,18 @@ function partySummary(record, user) {
   return { id: record.id, name: record.name, owned, version: record.version, updatedAt: record.updated_at, ...(user.role === 'master' && !owned ? { ownerEmail: record.owner_email } : {}), data: { profile: pick(data.profile, PARTY_PROFILE), stats: pick(data.stats, PARTY_STATS), spellcasting: pick(data.spellcasting, ['dc']), heroPoints: String(data.heroPoints ?? '0'), conditions } };
 }
 // --- SRD: consulta às regras estruturadas extraídas dos livros (tabelas srd_*) ---
-const SRD_TYPES = ['spell', 'focus', 'ritual', 'feat', 'class', 'ancestry', 'condition', 'item'];
+// affliction: maldição ou doença (category diz qual).
+const SRD_TYPES = ['spell', 'focus', 'ritual', 'feat', 'class', 'ancestry', 'condition', 'item', 'creature', 'hazard', 'affliction', 'vehicle'];
 const srdDeaccent = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const srdSqueeze = s => srdDeaccent(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 const ftsQuery = q => String(q).split(/\s+/).filter(Boolean).map(term => '"' + term.replace(/["]/g, '') + '*"').join(' ');
-function srdFilters(params) {
+function srdFilters(params, user) {
   const where = [], binds = [];
   const type = params.get('type');
   if (type) { if (!SRD_TYPES.includes(type)) fail(400, 'Tipo desconhecido.'); where.push('e.type = ?'); binds.push(type); }
+  // Criaturas e perigos começam no nível -1.
   const level = params.get('level');
-  if (level) { if (!/^\d{1,2}$/.test(level)) fail(400, 'Nível inválido.'); where.push('e.level = ?'); binds.push(Number(level)); }
+  if (level) { if (!/^-?\d{1,2}$/.test(level)) fail(400, 'Nível inválido.'); where.push('e.level = ?'); binds.push(Number(level)); }
   // Vaga de talento: até o nível da vaga.
   const maxLevel = params.get('maxLevel');
   if (maxLevel) { if (!/^\d{1,2}$/.test(maxLevel)) fail(400, 'Nível máximo inválido.'); where.push('e.level <= ?'); binds.push(Number(maxLevel)); }
@@ -87,16 +94,23 @@ function srdFilters(params) {
   if (categories.length) { where.push('(' + categories.map(() => 'e.category_norm LIKE ?').join(' OR ') + ')'); binds.push(...categories.map(category => '%' + srdSqueeze(category) + '%')); }
   const trait = params.get('trait');
   if (trait) { where.push('e.traits_norm LIKE ?'); binds.push('%' + srdSqueeze(trait) + '%'); }
-  const book = params.get('book');
-  if (book) { where.push('e.book = ?'); binds.push(book); }
-  return { where, binds };
+  // Livro por id ou sigla, sem diferenciar maiúsculas, só entre os visíveis: escondido e inexistente dão o mesmo 400.
+  const wanted = (params.get('book') || '').trim().toLowerCase();
+  const visible = visibleBooks(user);
+  const chosen = wanted ? visible.filter(book => book.id === wanted || (book.aliases || []).some(alias => alias.toLowerCase() === wanted)) : visible;
+  if (wanted && !chosen.length) fail(400, 'Livro desconhecido.');
+  const filtered = where.length > 0 || !!wanted;
+  const books = chosen.map(book => book.id);
+  where.push('e.book IN (' + placeholders(books) + ')'); binds.push(...books);
+  return { where, binds, books, filtered };
 }
-async function srdSearch(url, env) {
+async function srdSearch(url, env, user) {
   const params = url.searchParams;
   const q = (params.get('q') || '').trim().slice(0, 120);
   const limit = Math.min(Math.max(Number(params.get('limit')) || 25, 1), 200);
-  const { where, binds } = srdFilters(params);
-  const filterSql = where.length ? ' AND ' + where.join(' AND ') : '';
+  // `where` sempre traz os livros visíveis; `filtered` diz se a pessoa pediu algum filtro.
+  const { where, binds, books, filtered } = srdFilters(params, user);
+  const filterSql = ' AND ' + where.join(' AND ');
   const seen = new Set();
   const entries = [];
   const columns = 'e.id, e.type, e.name, e.level, e.category, e.traits, e.book, e.page';
@@ -106,23 +120,25 @@ async function srdSearch(url, env) {
     for (const row of fts.results) if (!seen.has(row.id)) { seen.add(row.id); entries.push(row); }
     if (entries.length < limit) {
       const like = '%' + srdSqueeze(q) + '%';
-      const extra = await env.DB.prepare('SELECT ' + columns + ", substr(e.data, 1, 260) AS snippet FROM srd_entries e WHERE e.norm LIKE ?" + (where.length ? ' AND ' + where.join(' AND ') : '') + ' ORDER BY e.type, e.name LIMIT ?').bind(like, ...binds, limit - entries.length).all();
+      const extra = await env.DB.prepare('SELECT ' + columns + ", substr(e.data, 1, 260) AS snippet FROM srd_entries e WHERE e.norm LIKE ?" + filterSql + ' ORDER BY e.type, e.name LIMIT ?').bind(like, ...binds, limit - entries.length).all();
       for (const row of extra.results) if (!seen.has(row.id)) { seen.add(row.id); entries.push(row); }
     }
   } else {
-    if (!where.length) return json({ entries: [], pages: [], hint: 'Informe um termo ou um filtro para navegar.' });
+    if (!filtered) return json({ entries: [], pages: [], hint: 'Informe um termo ou um filtro para navegar.' });
     const list = await env.DB.prepare('SELECT ' + columns + ", '' AS snippet FROM srd_entries e WHERE " + where.join(' AND ') + ' ORDER BY e.type, e.name LIMIT ?').bind(...binds, limit).all();
     for (const row of list.results) entries.push(row);
   }
   let pages = [];
   if (q && !params.get('type')) {
-    const pageHits = await env.DB.prepare("SELECT p.book, p.page, p.chapter, snippet(srd_pages_fts, 0, char(1), char(2), '…', 24) AS snippet FROM srd_pages_fts JOIN srd_pages p ON p.rowid = srd_pages_fts.rowid WHERE srd_pages_fts MATCH ? LIMIT 8").bind(ftsQuery(q)).all();
+    // Páginas também só dos livros visíveis (ou do livro pedido).
+    const inBooks = ' AND p.book IN (' + placeholders(books) + ')';
+    const pageHits = await env.DB.prepare("SELECT p.book, p.page, p.chapter, snippet(srd_pages_fts, 0, char(1), char(2), '…', 24) AS snippet FROM srd_pages_fts JOIN srd_pages p ON p.rowid = srd_pages_fts.rowid WHERE srd_pages_fts MATCH ?" + inBooks + ' LIMIT 8').bind(ftsQuery(q), ...books).all();
     pages = pageHits.results;
     // O reforço pelo texto espremido acha frases que o PDF colou ("Bolade Fogo"), mas uma palavra sozinha casa por cima
     // das palavras ("gerais e talentos" contém "seta"): por isso ele só entra em buscas de mais de uma palavra.
     if (pages.length < 4 && /\s/.test(q)) {
       const like = '%' + srdSqueeze(q) + '%';
-      const extraPages = await env.DB.prepare("SELECT p.book, p.page, p.chapter, substr(p.text, 1, 260) AS snippet FROM srd_pages p WHERE p.norm LIKE ? LIMIT 8").bind(like).all();
+      const extraPages = await env.DB.prepare("SELECT p.book, p.page, p.chapter, substr(p.text, 1, 260) AS snippet FROM srd_pages p WHERE p.norm LIKE ?" + inBooks + ' LIMIT 8').bind(like, ...books).all();
       const have = new Set(pages.map(p => p.book + '/' + p.page));
       for (const row of extraPages.results) if (!have.has(row.book + '/' + row.page)) pages.push(row);
     }
@@ -132,27 +148,30 @@ async function srdSearch(url, env) {
 async function api(request, env, path) {
   const user = await actor(request, env);
   const method = request.method;
-  if (path === '/api/session' && method === 'GET') { await migrateLegacy(user, env); return json({ user, books: BOOKS, invitationMode: env.INVITATION_MODE || 'private-site-sharing' }); }
-  if (path === '/api/books' && method === 'GET') return json({ books: BOOKS });
+  if (path === '/api/session' && method === 'GET') { await migrateLegacy(user, env); return json({ user, books: visibleBooks(user), invitationMode: env.INVITATION_MODE || 'private-site-sharing' }); }
+  if (path === '/api/books' && method === 'GET') return json({ books: visibleBooks(user) });
   if (path === '/api/srd/stats' && method === 'GET') {
-    const counts = await env.DB.prepare('SELECT type, COUNT(*) AS count FROM srd_entries GROUP BY type ORDER BY count DESC').all();
-    const total = await env.DB.prepare('SELECT COUNT(*) AS count FROM srd_entries').first();
+    const books = visibleBooks(user).map(book => book.id), inBooks = ' WHERE book IN (' + placeholders(books) + ')';
+    const counts = await env.DB.prepare('SELECT type, COUNT(*) AS count FROM srd_entries' + inBooks + ' GROUP BY type ORDER BY count DESC').bind(...books).all();
+    const total = await env.DB.prepare('SELECT COUNT(*) AS count FROM srd_entries' + inBooks).bind(...books).first();
     return json({ types: counts.results, total: total.count });
   }
-  if (path === '/api/search' && method === 'GET') return await srdSearch(new URL(request.url), env);
+  if (path === '/api/search' && method === 'GET') return await srdSearch(new URL(request.url), env, user);
   const entryMatch = path.match(/^\/api\/entries\/([\w-]+)$/);
   if (entryMatch && method === 'GET') {
     const record = await env.DB.prepare('SELECT * FROM srd_entries WHERE id = ?1').bind(entryMatch[1]).first();
-    if (!record) fail(404, 'Entrada não encontrada.');
+    // Entrada de livro escondido responde como inexistente.
+    if (!record || !visibleBooks(user).some(book => book.id === record.book)) fail(404, 'Entrada não encontrada.');
     let data = {};
     try { data = JSON.parse(record.data); } catch {}
     return json({ id: record.id, type: record.type, name: record.name, level: record.level, category: record.category, traits: record.traits ? record.traits.split(',').map(t => t.trim()).filter(Boolean) : [], book: record.book, page: record.page, data });
   }
-  const pageMatch = path.match(/^\/api\/books\/(livro[12])\/pages\/(\d+)$/);
+  const pageMatch = path.match(/^\/api\/books\/([a-z0-9]+)\/pages\/(\d+)$/);
   if (pageMatch && method === 'GET') {
-    const book = BOOKS.find(item => item.id === pageMatch[1]);
+    const book = visibleBooks(user).find(item => item.id === pageMatch[1]);
     const page = Number(pageMatch[2]);
-    if (page < 1 || page > book.pages) fail(404, 'Página fora do livro.');
+    // Livro inexistente ou escondido dá a mesma 404 da página fora do livro: não revela que ele existe.
+    if (!book || page < 1 || page > book.pages) fail(404, 'Página fora do livro.');
     const object = await env.BUCKET?.get(book.id + '/pages/' + page + '.jpg');
     if (!object) fail(404, 'Página ainda não disponível.');
     return new Response(object.body, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff' } });

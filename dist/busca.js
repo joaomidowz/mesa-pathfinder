@@ -11,7 +11,8 @@ const layout = document.querySelector('.search-layout');
 const narrow = window.matchMedia('(max-width: 1000px)');
 let currentEntry = null;
 
-for (let level = 1; level <= 20; level++) {
+// Criaturas e perigos vão do nível -1 ao 25; itens começam no 0.
+for (let level = -1; level <= 25; level++) {
   const option = document.createElement('option');
   option.value = String(level);
   option.textContent = String(level);
@@ -25,6 +26,17 @@ async function api(path) {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || 'Falha na busca.');
   return result;
+}
+
+// Filtro de livro: só os livros que esta conta vê (o servidor decide), como "Arquivos Ocultos (A)". O endereço aceita o
+// id ou uma sigla ("?book=AO"); livro que não está na lista cai em "Todos".
+async function loadBooks(wanted) {
+  try {
+    const { books } = await api('books');
+    for (const book of books) bookInput.append(new Option(book.name + (book.aliases?.length ? ` (${book.aliases[0]})` : ''), book.id));
+    const key = String(wanted || '').trim().toLowerCase();
+    bookInput.value = books.find(book => book.id === key || book.aliases?.some(alias => alias.toLowerCase() === key))?.id || '';
+  } catch { /* sem a lista, a busca segue em todos os livros visíveis */ }
 }
 
 function state() {
@@ -130,11 +142,12 @@ for (const el of [typeInput, levelInput, bookInput]) el.addEventListener('change
 
 (async () => {
   const params = new URLSearchParams(location.search);
-  for (const [key, el] of [['q', input], ['type', typeInput], ['level', levelInput], ['book', bookInput], ['trait', traitInput]]) {
+  for (const [key, el] of [['q', input], ['type', typeInput], ['level', levelInput], ['trait', traitInput]]) {
     if (params.get(key)) el.value = params.get(key);
   }
   input.focus();
   input.select();
+  await loadBooks(params.get('book'));
   try {
     const stats = await api('srd/stats');
     statsBox.innerHTML = stats.types.map(row =>
